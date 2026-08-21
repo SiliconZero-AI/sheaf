@@ -1,0 +1,1396 @@
+/* 主题只认 :root[data-theme]，由 theme.ts 显式写死（跟随系统时也会解析成 light/dark 写上去）。
+   这样深色只需要维护一份，不用 @media 再抄一遍。 */
+
+:root {
+  /* 浅色「薄荷」：淡灰绿底 + 白卡片画布 + 一点薄荷青做唯一强调色。
+     底和画布分两层（而不是一块纯白铺到底），界面才有层次、不发平 */
+  --bg: #f6f8f7;
+  --surface: #ffffff;
+  --pane: #f6f8f7;
+  --float: #ffffff;
+  --ink: #1b2320;
+  --ink-2: #46534e;
+  --ink-3: #5d6b66;
+  --mute: #8b9995;
+  --icon: #77857f;
+  --icon-off: #b9c4c0;
+  --line: #e8efec;
+  --hover: #eef4f2;
+  /* accent 用在色块和实心按钮上；accent-strong 是深一档的同色，专门给文字用（对比度够） */
+  --accent: #3aa38c;
+  --accent-strong: #2f8b76;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(58, 163, 140, 0.12);
+  /* 阴影分四级：卡片 / 浮层 / 菜单 / 弹窗。只有一级的话层次全靠边框，那是「工程感」 */
+  --shadow-sm: 0 1px 3px rgba(24, 46, 40, 0.06), 0 1px 2px rgba(24, 46, 40, 0.04);
+  --shadow: 0 4px 12px rgba(24, 46, 40, 0.07);
+  --shadow-md: 0 8px 24px rgba(24, 46, 40, 0.1);
+  --shadow-lg: 0 16px 48px rgba(24, 46, 40, 0.14);
+  --scroll: rgba(27, 35, 32, 0.18);
+  --code-bg: #f1f6f4;
+  --quote-bar: #cbdfd9;
+  --warn: #a3701f;
+  --hit: rgba(58, 163, 140, 0.22);
+  --hit-now: #3aa38c;
+  --hit-now-ink: #ffffff;
+  /*
+   * 全部系统字体：不外链 CDN，断网和国内网络下都不塌。
+   * Segoe UI 必须排在 Microsoft YaHei 前面——雅黑的西文字形又扁又糊，
+   * 排在后面的话正文里的英文和数字全会用它渲染（这是 08-17 之前正文难看的真正原因）。
+   * Inter / SF Pro 放最前：装了就用，没装也不会去外面下载。
+   */
+  --font-ui: "Inter", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* 正文也走无衬线：衬线体在中文长文里是「文艺」，不是要的简洁大气 */
+  --font-text: "Inter", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  /* 深色「雾蓝」：底压得更深、正文提得更亮，对比拉开才不显灰蒙蒙 */
+  --bg: #0c0f14;
+  --surface: #171c24;
+  --pane: #0c0f14;
+  --float: #1c222b;
+  --ink: #eef1f6;
+  --ink-2: #b2b9c6;
+  --ink-3: #99a1b0;
+  --mute: #7a8290;
+  --icon: #8c94a2;
+  --icon-off: #4d5460;
+  --line: #252932;
+  --hover: #1f232b;
+  --accent: #7ba5f5;
+  --accent-strong: #91b5f8;
+  --accent-ink: #10182a;
+  --accent-soft: rgba(123, 165, 245, 0.16);
+  /* 深色里阴影几乎看不见，层次主要靠底与卡片的明度差，阴影只做一点点收边 */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 8px 26px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --scroll: rgba(238, 241, 246, 0.16);
+  --code-bg: #11161d;
+  --quote-bar: #39414f;
+  --warn: #dda75f;
+  --hit: rgba(123, 165, 245, 0.24);
+  --hit-now: #7ba5f5;
+  --hit-now-ink: #10182a;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  overflow: hidden;
+}
+
+/* 默认滚动条在深色下是一条发亮的粗杠，很抢戏。收细、调淡 */
+.pane-body,
+.vditor-ir pre.vditor-reset {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll) transparent;
+}
+
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: 46px auto minmax(0, 1fr) 28px;
+}
+
+/* ---------- 顶栏 ---------- */
+
+/* 顶栏和状态栏都不画分隔线，靠留白和背景色差分层——那几条 1px 灰线是「工程感」的主要来源 */
+.bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+}
+
+.bar-left,
+.bar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bar-right {
+  justify-content: flex-end;
+}
+
+/* 品牌区：logo 天天在眼前，才叫有个产品；只藏在标签页图标里等于没做 */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+
+.brand-logo {
+  flex: none;
+  display: block;
+}
+
+.brand b {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--ink-2);
+}
+
+/* 工具栏有自己的一条容器，跟写作区分得开——这就是「功能区的区域感」。
+   裸着一排按钮浮在背景上，看着就是没做完 */
+#toolbar-slot {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 0;
+  padding: 0 8px 8px;
+}
+
+#toolbar-slot .vditor-toolbar {
+  padding: 5px 10px !important;
+  border-radius: 12px;
+  background: var(--surface) !important;
+  /* 用中一档的阴影：shadow-sm 在灰底上几乎看不出边界，那就等于没做容器 */
+  box-shadow: var(--shadow);
+  max-width: 100%;
+}
+
+/* 导出这类下拉 */
+.menu-wrap {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 168px;
+  padding: 5px;
+  background: var(--float);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+}
+
+.menu[hidden] {
+  display: none;
+}
+
+.menu-item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font: 400 13px/1.4 var(--font-ui);
+  color: var(--ink-2);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* 菜单项带一句说明：光看「打开文件夹」四个字，第一次用的人不知道跟「打开单篇」差在哪 */
+.menu-title {
+  color: var(--ink);
+}
+
+.menu-hint {
+  font-size: 11.5px;
+  color: var(--mute);
+}
+
+.menu-item:hover {
+  background: var(--hover);
+}
+
+.menu-item:hover .menu-title {
+  color: var(--accent-strong);
+}
+
+.icon-btn,
+.text-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 400 13px/1 var(--font-ui);
+  cursor: pointer;
+  border-radius: 7px;
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--icon);
+}
+
+.text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+/* 顶栏按钮的线条图标（工具栏那套 wd-line-icon 只在 Vditor 里生效，这里补一份） */
+.text-btn .wd-line-icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.text-btn .caret {
+  opacity: 0.55;
+  margin-left: -1px;
+}
+
+.text-btn.quiet {
+  color: var(--mute);
+}
+
+.text-btn.accent {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* 描边款：需要被看见但不该跟「保存」这个主按钮抢（比如「继续上次」） */
+.text-btn.ghost {
+  color: var(--accent-strong);
+  box-shadow: inset 0 0 0 1px var(--accent-soft);
+}
+
+.text-btn.ghost:hover {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.icon-btn:hover,
+.text-btn:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.text-btn.accent:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+  filter: brightness(1.08);
+}
+
+.icon-btn[data-on="0"] {
+  color: var(--icon-off);
+}
+
+.icon-btn:focus-visible,
+.text-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* 主题按钮：亮着的那只图标跟着主题换，另一只收起来 */
+#btn-theme .sun {
+  display: none;
+}
+
+:root[data-theme="dark"] #btn-theme .sun {
+  display: block;
+}
+
+:root[data-theme="dark"] #btn-theme .moon {
+  display: none;
+}
+
+/* ---------- 三栏 ---------- */
+
+.body {
+  --left-w: 208px;
+  --right-w: 200px;
+  display: grid;
+  grid-template-columns: var(--left-w) minmax(0, 1fr) var(--right-w);
+  min-height: 0;
+}
+
+.body[data-left="off"] {
+  --left-w: 0px;
+}
+
+.body[data-right="off"] {
+  --right-w: 0px;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--pane);
+}
+
+.pane-head {
+  flex: none;
+  padding: 12px 12px 6px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--mute);
+  white-space: nowrap;
+}
+
+/* 左右留出 8px：条目的圆角选中块才不会贴着栏边 */
+.pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 8px 16px;
+}
+
+.side-empty {
+  margin: 4px 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--mute);
+}
+
+.tree-root {
+  padding: 0 4px 8px;
+  font-size: 12px;
+  color: var(--mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-list,
+.outline-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 左内边距由 tree.ts / outline.ts 按层级内联写入，这里只管其余三边和圆角 */
+.tree-row,
+.outline-row {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px 9px;
+  border-radius: 8px;
+  font: 400 13px/1.4 var(--font-ui);
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-caret {
+  flex: none;
+  width: 10px;
+  font-size: 9px;
+  color: var(--mute);
+}
+
+.tree-row:hover,
+.outline-row:hover {
+  background: var(--hover);
+}
+
+.tree-row[data-active="1"] {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 500;
+}
+
+.outline-row {
+  display: block;
+  text-overflow: ellipsis;
+  color: var(--ink-3);
+}
+
+.outline-row[data-level="1"] {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.outline-row[data-active="1"] {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  box-shadow: inset 2.5px 0 0 var(--accent);
+}
+
+/* ---------- 画布 ---------- */
+
+/* 画布是浮在灰底上的一张白卡片——界面的层次感主要靠这一层，
+   而不是靠给每个区域画边框 */
+/* 卡片给个上限并居中：窗口拉大时它不再无限变宽，
+   否则正文只有 720px 却摊在一张 1500px 的白纸中间，两边各空四百多像素，
+   看着就是「说不出哪里别扭」。现在是一张定宽的纸浮在灰底上。 */
+.canvas {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto 8px;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+#editor,
+.vditor,
+.vditor-content,
+.vditor-ir,
+.vditor-ir pre.vditor-reset {
+  height: 100%;
+  border: 0 !important;
+  background: var(--surface) !important;
+}
+
+/* 工具栏：独立一行，图标 + 中文。
+   绝不能再加 overflow: hidden——Vditor 的提示气泡是绝对定位的 ::after，
+   会被整条裁掉，按钮就变成一排猜谜图标（2026-08-14 到 08-17 一直是这个 bug）。 */
+.vditor-toolbar {
+  display: flex !important;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1px;
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  height: auto !important;
+  line-height: 1;
+}
+
+.vditor-toolbar__item {
+  float: none !important;
+  padding: 0 !important;
+}
+
+.vditor-toolbar .vditor-tooltipped {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 5px;
+  width: auto !important;
+  height: 28px !important;
+  /* 按钮多，间距再宽就会挤到换行——第二行只挂一个按钮很难看 */
+  padding: 0 6px !important;
+  /* Vditor 默认把按钮设成 font-size: 0，中文标签会整个消失 */
+  font: 400 12.5px/1 var(--font-ui) !important;
+  color: var(--icon) !important;
+  border-radius: 7px;
+}
+
+.vditor-toolbar .vditor-tooltipped span {
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+/* 中等宽度下先把不常用的几个按钮的中文收掉，保住「一行放得下」 */
+@media (max-width: 1400px) {
+  .vditor-toolbar [data-type="inline-code"] span,
+  .vditor-toolbar [data-type="mermaid"] span,
+  .vditor-toolbar [data-type="wd-emoji"] span {
+    display: none;
+  }
+}
+
+/* Vditor 的图标是实心 fill 型，它那条 svg 规则会把我们自画的线条图标压成一坨色块 */
+.vditor-toolbar__item svg.wd-line-icon {
+  fill: none !important;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.vditor-toolbar .vditor-tooltipped:hover,
+.vditor-toolbar .vditor-tooltipped:focus {
+  color: var(--ink) !important;
+  background: var(--hover) !important;
+}
+
+.vditor-toolbar .vditor-tooltipped:hover span,
+.vditor-toolbar .vditor-tooltipped:focus span {
+  color: var(--ink);
+}
+
+/* 光标进表格时浮出的加行/加列/删行/删列按钮条。挂在画布卡片（position: relative）里，
+   不进 Vditor 的 contenteditable 树——那棵树序列化成 Markdown 时不认识外来节点。 */
+.wd-table-toolbar {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--float);
+  border-radius: 9px;
+  box-shadow: var(--shadow-md);
+}
+
+.wd-table-toolbar[hidden] {
+  display: none;
+}
+
+.wd-table-toolbar__btn .wd-line-icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.wd-table-toolbar__btn:hover {
+  background: var(--hover);
+  color: var(--accent-strong);
+}
+
+/* Vditor 的分隔线原本靠 float 布局撑宽，放进 flex 里宽度会塌成 0 */
+.vditor-toolbar__divider {
+  flex: none;
+  width: 1px !important;
+  height: 14px !important;
+  margin: 0 4px !important;
+  background: var(--line) !important;
+}
+
+.vditor {
+  --toolbar-icon-color: var(--icon);
+  --toolbar-icon-hover-color: var(--ink);
+  --second-color: var(--mute);
+  --panel-background-color: var(--float);
+  --panel-shadow: var(--shadow-md);
+  --border-color: var(--line);
+  --textarea-background-color: var(--surface);
+  --textarea-text-color: var(--ink);
+  --heading-border-color: transparent;
+  --blockquote-color: var(--ink-3);
+  /* 光标停在节点上时露出来的那几个标记符号。Vditor 默认是 IntelliJ 那套紫蓝绿，
+     在这块纸上太吵，也不在深色下工作。一律收成灰，链接类给强调色 */
+  --ir-heading-color: var(--mute);
+  --ir-title-color: var(--mute);
+  --ir-bi-color: var(--mute);
+  --ir-bracket-color: var(--mute);
+  --ir-link-color: var(--accent);
+  --ir-paren-color: var(--accent);
+}
+
+.vditor-ir pre.vditor-reset {
+  max-width: 720px;
+  margin: 0 auto !important;
+  padding: 48px 28px 45vh !important;
+  font-family: var(--font-text) !important;
+  font-size: 17px !important;
+  font-weight: 400 !important;
+  line-height: 1.85 !important;
+  color: var(--ink) !important;
+  /* Georgia 默认用旧式数字（高低错落），中文正文里的年份和数据会看着像出了 bug */
+  font-variant-numeric: lining-nums;
+  font-feature-settings: "lnum" 1;
+}
+
+.vditor-ir .vditor-reset > h1:before,
+.vditor-ir .vditor-reset > h2:before,
+.vditor-ir .vditor-reset > h3:before,
+.vditor-ir .vditor-reset > h4:before,
+.vditor-ir .vditor-reset > h5:before,
+.vditor-ir .vditor-reset > h6:before,
+.vditor-ir div[data-type="link-ref-defs-block"]:before,
+.vditor-ir div[data-type="footnotes-block"]:before,
+.vditor-ir .vditor-toc:before {
+  display: none !important;
+}
+
+/* 光标不在标题里时藏井号；正在输入时必须露出来，否则只剩一根空竖线 */
+.vditor-ir h1:not(.vditor-ir__node--expand) .vditor-ir__marker,
+.vditor-ir h2:not(.vditor-ir__node--expand) .vditor-ir__marker,
+.vditor-ir h3:not(.vditor-ir__node--expand) .vditor-ir__marker,
+.vditor-ir h4:not(.vditor-ir__node--expand) .vditor-ir__marker,
+.vditor-ir h5:not(.vditor-ir__node--expand) .vditor-ir__marker,
+.vditor-ir h6:not(.vditor-ir__node--expand) .vditor-ir__marker {
+  display: none !important;
+}
+
+.vditor-ir h1.vditor-ir__node--expand .vditor-ir__marker,
+.vditor-ir h2.vditor-ir__node--expand .vditor-ir__marker,
+.vditor-ir h3.vditor-ir__node--expand .vditor-ir__marker,
+.vditor-ir h4.vditor-ir__node--expand .vditor-ir__marker,
+.vditor-ir h5.vditor-ir__node--expand .vditor-ir__marker,
+.vditor-ir h6.vditor-ir__node--expand .vditor-ir__marker {
+  display: inline !important;
+  width: auto !important;
+  height: auto !important;
+  overflow: visible !important;
+  color: var(--mute);
+}
+
+.vditor-reset h1,
+.vditor-reset h2,
+.vditor-reset h3 {
+  font-weight: 600;
+  border: 0 !important;
+  padding: 0;
+}
+
+.vditor-reset h1 {
+  font-size: 1.75em;
+  line-height: 1.25;
+  margin: 0 0 0.7em;
+}
+
+.vditor-reset h2 {
+  font-size: 1.25em;
+  margin: 1.7em 0 0.5em;
+}
+
+.vditor-reset h3 {
+  font-size: 1.08em;
+  margin: 1.35em 0 0.4em;
+}
+
+.vditor-reset p,
+.vditor-reset li {
+  font-weight: 400;
+}
+
+.vditor-reset blockquote {
+  margin: 1.2em 0;
+  padding: 0 0 0 1em;
+  border-left: 2.5px solid var(--quote-bar);
+  background: transparent;
+  color: var(--ink-3);
+  font-style: normal;
+}
+
+.vditor-reset img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1.4em 0;
+}
+
+/* Vditor 自带样式把这几处的颜色写死成浅色，深色下必须接管 */
+
+.vditor-reset a {
+  color: var(--accent-strong);
+}
+
+.vditor-reset hr {
+  height: 1px;
+  background-color: var(--line);
+}
+
+/* 限定在 pre 之外：否则这条的特异性比下面的代码块规则高，会把代码块的圆角也一起吃掉 */
+.vditor-reset :not(pre) > code:not(.hljs):not(.highlight-chroma) {
+  background-color: var(--code-bg);
+  background-image: none;
+  border-radius: 5px;
+  color: var(--ink-2);
+}
+
+.vditor-reset pre > code {
+  background-color: var(--code-bg);
+  background-image: none;
+  border-radius: 10px;
+  padding: 13px 15px;
+  color: var(--ink-2);
+}
+
+.vditor-reset table tr,
+.vditor-reset table tbody tr:nth-child(2n) {
+  background-color: transparent;
+  border-top: 1px solid var(--line);
+}
+
+.vditor-reset table td,
+.vditor-reset table th {
+  border: 1px solid var(--line);
+}
+
+.vditor-reset kbd {
+  color: var(--ink-2);
+  background-color: var(--code-bg);
+  border: solid 1px var(--line);
+  box-shadow: none;
+}
+
+/* ---------- 查找 ---------- */
+
+.search-bar {
+  position: absolute;
+  top: 12px;
+  right: 20px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 5px 5px 12px;
+  background: var(--float);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+}
+
+.search-bar[hidden] {
+  display: none;
+}
+
+.search-bar input {
+  width: 150px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: 400 13px/1.4 var(--font-ui);
+  color: var(--ink);
+}
+
+.search-bar input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-count {
+  min-width: 44px;
+  font-size: 12px;
+  color: var(--mute);
+  text-align: right;
+}
+
+::highlight(wd-search) {
+  background-color: var(--hit);
+}
+
+::highlight(wd-search-current) {
+  background-color: var(--hit-now);
+  color: var(--hit-now-ink);
+}
+
+/* ---------- 状态栏 ---------- */
+
+.status {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 0 14px;
+  font-size: 12px;
+  color: var(--mute);
+}
+
+#file-label {
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40vw;
+}
+
+/* 存好了给一眼能看到的绿，不然「已保存」和别的灰字混在一起，等于没说 */
+#save-label[data-tone="idle"] {
+  color: var(--accent-strong);
+}
+
+#save-label[data-tone="dirty"] {
+  color: var(--warn);
+}
+
+#save-label[data-tone="busy"] {
+  color: var(--mute);
+}
+
+#hint-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+#count-label {
+  white-space: nowrap;
+}
+
+/* 打印 / 存 PDF：只留正文。
+   画布平时是 height:100% + overflow:auto，不改的话打印出来只有屏幕上那一屏。 */
+@media print {
+  .bar,
+  #toolbar-slot,
+  .pane,
+  .status,
+  .search-bar {
+    display: none !important;
+  }
+
+  html,
+  body,
+  .app,
+  .body,
+  .canvas {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+    background: #fff !important;
+  }
+
+  #editor,
+  .vditor,
+  .vditor-content,
+  .vditor-ir,
+  .vditor-ir pre.vditor-reset {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  .vditor-ir pre.vditor-reset {
+    max-width: none !important;
+    padding: 0 !important;
+    color: #000 !important;
+  }
+
+  .vditor-reset h1,
+  .vditor-reset h2,
+  .vditor-reset h3 {
+    break-after: avoid;
+  }
+
+  .vditor-reset pre,
+  .vditor-reset blockquote,
+  .vditor-reset table,
+  .vditor-reset img {
+    break-inside: avoid;
+  }
+}
+
+@media (max-width: 900px) {
+  .body {
+    --left-w: 170px;
+    --right-w: 0px;
+  }
+  .brand {
+    display: none;
+  }
+  /* 位置不够就把工具栏的中文收起来，只留图标，免得挤成三行 */
+  .vditor-toolbar .vditor-tooltipped span {
+    display: none;
+  }
+  .vditor-ir pre.vditor-reset {
+    padding: 28px 16px 40vh !important;
+  }
+  #hint-label {
+    display: none;
+  }
+}
+
+/* ---------- 工作区（左栏可以挂多个文件夹） ---------- */
+
+.tree-space {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 10px 0 2px;
+}
+
+.tree-space:first-child {
+  margin-top: 2px;
+}
+
+/* 文件夹名要看得见——这是「我现在在操作哪个目录」的唯一线索 */
+.tree-space-name {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  padding: 5px 6px;
+  border-radius: 8px;
+  font: 600 12.5px/1.4 var(--font-ui);
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.tree-space-name:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.tree-space-remove {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--icon-off);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.tree-space:hover .tree-space-remove {
+  opacity: 1;
+}
+
+.tree-space-remove:hover {
+  background: var(--hover);
+  color: var(--ink-2);
+}
+
+/* ---------- 拖进来时的提示层 ---------- */
+
+.dropzone {
+  position: absolute;
+  inset: 10px;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.dropzone[hidden] {
+  display: none;
+}
+
+.dropzone-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 30px 40px;
+  border: 2px dashed var(--accent);
+  border-radius: 16px;
+  background: var(--accent-soft);
+  text-align: center;
+}
+
+.dropzone-box .wd-line-icon {
+  fill: none;
+  stroke: var(--accent-strong);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dropzone-box strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent-strong);
+}
+
+.dropzone-box span {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.dropzone-tip {
+  color: var(--mute) !important;
+}
+
+/* 左栏空状态里的行动按钮：不能只给一句话，得有个能点的东西 */
+.side-action {
+  appearance: none;
+  border: 0;
+  display: block;
+  margin: 8px 4px 0;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 500 12.5px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.side-action:hover {
+  filter: brightness(1.08);
+}
+
+/* ---------- 表情面板（自己写的，带分类和中英文搜索） ---------- */
+
+.emoji-panel {
+  position: fixed;
+  z-index: 60;
+  width: 316px;
+  padding: 10px;
+  background: var(--float);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+}
+
+.emoji-panel[hidden] {
+  display: none;
+}
+
+.emoji-search {
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--hover);
+  color: var(--ink);
+  font: 400 13px/1.4 var(--font-ui);
+  outline: none;
+}
+
+.emoji-search::-webkit-search-cancel-button {
+  display: none;
+}
+
+.emoji-tabs {
+  display: flex;
+  gap: 2px;
+  margin: 8px 0 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+/* scrollbar-width 只有 Firefox 认，Chrome 要用这条才能把那道横条藏掉 */
+.emoji-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.emoji-tab {
+  appearance: none;
+  border: 0;
+  flex: none;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--mute);
+  font: 400 12px/1 var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.emoji-tab:hover {
+  background: var(--hover);
+  color: var(--ink-2);
+}
+
+.emoji-tab[data-on="1"] {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 500;
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  max-height: 232px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll) transparent;
+}
+
+.emoji-cell {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  height: 34px;
+  border-radius: 8px;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.emoji-cell:hover {
+  background: var(--hover);
+}
+
+.emoji-none {
+  grid-column: 1 / -1;
+  margin: 14px 4px;
+  font-size: 12.5px;
+  color: var(--mute);
+}
+
+/* 待恢复的文件夹：名字 + 一句「点一下继续用」，比顶栏那个「恢复上次的文件夹」讲人话 */
+.tree-resume {
+  appearance: none;
+  border: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  margin: 2px 0;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font: 500 12.5px/1.4 var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.tree-resume:hover {
+  filter: brightness(0.97);
+}
+
+.tree-resume small {
+  flex: none;
+  font-weight: 400;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+/* ---------- 跨文件搜索面板 ---------- */
+
+.gs-panel {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  width: min(560px, calc(100% - 32px));
+  max-height: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  background: var(--float);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+}
+
+.gs-panel[hidden] {
+  display: none;
+}
+
+.gs-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gs-head input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--hover);
+  color: var(--ink);
+  font: 400 13.5px/1.4 var(--font-ui);
+  outline: none;
+}
+
+.gs-head input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.gs-status {
+  padding: 8px 4px 4px;
+  font-size: 11.5px;
+  color: var(--mute);
+}
+
+.gs-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll) transparent;
+}
+
+.gs-file {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 2px;
+  padding: 0 6px;
+  font: 600 12.5px/1.5 var(--font-ui);
+  color: var(--ink);
+}
+
+.gs-file small {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--mute);
+}
+
+.gs-hit {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font: 400 12.5px/1.5 var(--font-ui);
+  color: var(--ink-3);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.gs-hit:hover {
+  background: var(--hover);
+  color: var(--ink-2);
+}
+
+.gs-hit mark {
+  background: var(--hit);
+  color: inherit;
+  border-radius: 3px;
+}
+
+/* ---------- 帮助面板 ---------- */
+
+.help-panel {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  width: min(640px, calc(100% - 40px));
+  max-height: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  padding: 10px 14px 14px;
+  background: var(--float);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+}
+
+.help-panel[hidden] {
+  display: none;
+}
+
+.help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 8px;
+  font: 600 14px/1 var(--font-ui);
+  color: var(--ink);
+}
+
+.help-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll) transparent;
+}
+
+.help-body section {
+  padding: 10px 4px;
+  border-top: 1px solid var(--line);
+}
+
+.help-body section:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+
+.help-body h3 {
+  margin: 0 0 8px;
+  font: 600 13.5px/1.3 var(--font-ui);
+  color: var(--ink);
+}
+
+.help-body p {
+  margin: 0;
+  font: 400 13px/1.7 var(--font-ui);
+  color: var(--ink-2);
+}
+
+.help-body ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.help-body li {
+  font: 400 13px/1.6 var(--font-ui);
+  color: var(--ink-2);
+}
+
+.help-body code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--code-bg);
+  font: 400 12px/1.4 ui-monospace, SFMono-Regular, Consolas, "Cascadia Code", monospace;
+  color: var(--ink-2);
+}
+
+.help-body table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.help-body td {
+  padding: 6px 4px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.help-body td:first-child {
+  color: var(--ink-3);
+}
+
+.help-body tr:first-child td {
+  border-top: 0;
+}
+
+.help-body td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.help-body kbd {
+  display: inline-block;
+  min-width: 14px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--code-bg);
+  box-shadow: 0 1px 0 var(--line);
+  font: 500 11px/1.4 ui-monospace, SFMono-Regular, Consolas, "Cascadia Code", monospace;
+  color: var(--ink-2);
+  text-align: center;
+}

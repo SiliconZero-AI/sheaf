@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sheaf</title>
+    <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="description" content="Sheaf · 本地 Markdown 写作 App：打开文件夹，一块画布写。" />
+    <!--
+      语言引擎见 src/i18n/。默认中文文案保留在标记里作为 fallback；
+      data-i18n 系列属性告诉 main.ts 启动时 applyStaticI18n() 该往这个节点填哪个词条。
+    -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("wd-lang");
+          var lang = saved === "zh" || saved === "en" ? saved : (navigator.language || "").toLowerCase().indexOf("zh") === 0 ? "zh" : "en";
+          document.documentElement.lang = lang === "zh" ? "zh-CN" : "en-US";
+        } catch (e) {}
+      })();
+    </script>
+    <script>
+      // 首帧之前定好深浅，否则深色下会先白闪一下。之后交给 src/theme.ts
+      (function () {
+        var saved = null;
+        try {
+          saved = localStorage.getItem("wd-theme");
+        } catch (e) {
+          saved = null;
+        }
+        var dark = saved ? saved === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="bar">
+        <div class="bar-left">
+          <button
+            type="button"
+            id="btn-toggle-left"
+            class="icon-btn"
+            data-i18n-title="bar.toggleFiles"
+            title="文件栏 Ctrl+\"
+            aria-pressed="true"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <line x1="9" y1="4" x2="9" y2="20" />
+            </svg>
+          </button>
+          <span class="brand">
+            <svg class="brand-logo" viewBox="0 0 64 64" width="19" height="19" aria-hidden="true">
+              <defs>
+                <linearGradient id="lgTop" x1="0" y1="0" x2=".4" y2="1">
+                  <stop offset="0" stop-color="#ffffff" /><stop offset="1" stop-color="#dceae6" />
+                </linearGradient>
+                <linearGradient id="lgMid" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#7fd3bd" /><stop offset="1" stop-color="#4bab93" />
+                </linearGradient>
+                <linearGradient id="lgBot" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#3aa38c" /><stop offset="1" stop-color="#256b5b" />
+                </linearGradient>
+              </defs>
+              <rect x="10" y="34" width="44" height="16" rx="3" fill="url(#lgBot)" transform="rotate(-6 32 42)" />
+              <rect x="11" y="26" width="42" height="16" rx="3" fill="url(#lgMid)" transform="rotate(-2 32 34)" />
+              <rect x="13" y="12" width="38" height="26" rx="3.5" fill="url(#lgTop)" transform="rotate(3 32 25)" />
+              <g transform="rotate(3 32 25)">
+                <path d="M19 20H43M19 25H43M19 30H35" stroke="#8fb3aa" stroke-width="2" stroke-linecap="round" />
+              </g>
+            </svg>
+            <b>Sheaf</b>
+          </span>
+        </div>
+
+        <div class="bar-right">
+          <button
+            type="button"
+            id="btn-open-dir"
+            class="text-btn"
+            data-i18n-title="bar.openDirTitle"
+            title="打开硬盘上的一个文件夹，左栏会列出里面所有稿子"
+          >
+            <svg class="wd-line-icon" viewBox="0 0 24 24" width="15" height="15">
+              <path d="M3 7.5a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            </svg>
+            <span data-i18n="bar.openDirLabel">打开文件夹</span>
+          </button>
+
+          <div class="menu-wrap">
+            <button
+              type="button"
+              id="btn-open"
+              class="icon-btn"
+              aria-haspopup="true"
+              aria-expanded="false"
+              data-i18n-title="bar.openMoreTitle"
+              title="更多打开方式"
+            >
+              <svg class="wd-line-icon" viewBox="0 0 24 24" width="15" height="15">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            <div class="menu" id="open-menu" hidden>
+              <button type="button" class="menu-item" data-open="dir">
+                <span class="menu-title" data-i18n="bar.openMenuDirTitle">打开文件夹</span>
+                <span class="menu-hint" data-i18n="bar.openMenuDirHint">当成工作区，左栏列出里面所有稿子</span>
+              </button>
+              <button type="button" class="menu-item" data-open="file">
+                <span class="menu-title" data-i18n="bar.openMenuFileTitle">打开单篇</span>
+                <span class="menu-hint" data-i18n="bar.openMenuFileHint">只开一个 .md，不带文件夹</span>
+              </button>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            id="btn-new"
+            class="text-btn"
+            data-i18n-title="bar.newFileTitle"
+            title="在当前文件夹里新建一篇稿子"
+          >
+            <svg class="wd-line-icon" viewBox="0 0 24 24" width="15" height="15">
+              <path d="M13 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-9z" />
+              <path d="M13 3v6h6" />
+            </svg>
+            <span data-i18n="bar.newFileLabel">新建</span>
+          </button>
+
+          <button
+            type="button"
+            id="btn-save"
+            class="text-btn accent"
+            data-i18n-title="bar.saveTitle"
+            title="存回原文件。平时停笔两秒也会自动存，不按也不会丢"
+          >
+            <svg class="wd-line-icon" viewBox="0 0 24 24" width="15" height="15">
+              <path d="M5 3h11l3 3v15H5z" />
+              <path d="M8 3v6h7M8 14h8v7H8z" />
+            </svg>
+            <span data-i18n="bar.saveLabel">保存</span>
+          </button>
+
+          <div class="menu-wrap">
+            <button
+              type="button"
+              id="btn-export"
+              class="text-btn"
+              aria-haspopup="true"
+              aria-expanded="false"
+              data-i18n-title="bar.exportTitle"
+              title="把这篇稿子另存成别的格式，不影响原文件"
+            >
+              <svg class="wd-line-icon" viewBox="0 0 24 24" width="15" height="15">
+                <path d="M12 3v12M8 11l4 4 4-4" />
+                <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+              </svg>
+              <span data-i18n="bar.exportLabel">导出</span>
+              <svg class="wd-line-icon caret" viewBox="0 0 24 24" width="11" height="11">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            <div class="menu" id="export-menu" hidden>
+              <button type="button" class="menu-item" data-export="md">
+                <span class="menu-title" data-i18n="bar.exportMdTitle">Markdown（.md）</span>
+                <span class="menu-hint" data-i18n="bar.exportMdHint">原样导出，图片写相对路径</span>
+              </button>
+              <button type="button" class="menu-item" data-export="html">
+                <span class="menu-title" data-i18n="bar.exportHtmlTitle">网页（.html）</span>
+                <span class="menu-hint" data-i18n="bar.exportHtmlHint">带排版，双击就能看</span>
+              </button>
+              <button type="button" class="menu-item" data-export="print">
+                <span class="menu-title" data-i18n="bar.exportPrintTitle">打印 / 存 PDF</span>
+                <span class="menu-hint" data-i18n="bar.exportPrintHint">在系统打印框里选「另存为 PDF」</span>
+              </button>
+            </div>
+          </div>
+          <button type="button" id="btn-theme" class="icon-btn" title="切到深色">
+            <svg class="moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M20 13.5A8 8 0 0 1 10.5 4a8 8 0 1 0 9.5 9.5z" />
+            </svg>
+            <svg class="sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6">
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4" />
+            </svg>
+          </button>
+          <button type="button" id="btn-lang" class="icon-btn" title="Language">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6">
+              <circle cx="12" cy="12" r="8.5" />
+              <path d="M3.5 12h17" />
+              <path d="M12 3.5c2.6 2.3 4 5.2 4 8.5s-1.4 6.2-4 8.5c-2.6-2.3-4-5.2-4-8.5s1.4-6.2 4-8.5z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            id="btn-toggle-right"
+            class="icon-btn"
+            data-i18n-title="bar.toggleOutline"
+            title="大纲 Ctrl+Shift+\"
+            aria-pressed="true"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6">
+              <line x1="4" y1="7" x2="20" y2="7" />
+              <line x1="9" y1="12" x2="20" y2="12" />
+              <line x1="9" y1="17" x2="20" y2="17" />
+            </svg>
+          </button>
+          <button type="button" id="btn-help" class="icon-btn" data-i18n-title="bar.help" title="帮助">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M9.3 9.2a2.7 2.7 0 0 1 5.2-1c.5 1.1.1 1.9-.9 2.6l-.5.4a2 2 0 0 0-.9 1.7v.3" />
+              <circle cx="12" cy="16.6" r="1" fill="currentColor" stroke="none" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <div id="toolbar-slot"></div>
+
+      <div class="body" id="body" data-left="on" data-right="on">
+        <aside class="pane pane-left">
+          <div class="pane-head" data-i18n="pane.files">文件</div>
+          <div class="pane-body" id="tree"></div>
+        </aside>
+
+        <main class="canvas">
+          <div id="editor"></div>
+          <div class="dropzone" id="dropzone" hidden>
+            <div class="dropzone-box">
+              <svg class="wd-line-icon" viewBox="0 0 24 24" width="30" height="30">
+                <path d="M12 16V4M8 8l4-4 4 4" />
+                <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+              </svg>
+              <strong data-i18n="dropzone.title">松手就打开</strong>
+              <span data-i18n="dropzone.body">整个文件夹 → 挂到左栏当工作区；单个 .md → 直接开始写</span>
+              <span class="dropzone-tip" data-i18n="dropzone.tip">图片可以直接拖进正文，会存到稿件旁边的 images/</span>
+            </div>
+          </div>
+          <div class="search-bar" id="search-bar" hidden>
+            <input id="search-input" type="search" data-i18n-placeholder="search.placeholder" placeholder="查找" autocomplete="off" />
+            <span id="search-count" class="search-count"></span>
+            <button type="button" id="search-prev" class="icon-btn" data-i18n-title="search.prevTitle" title="上一个 Shift+Enter">↑</button>
+            <button type="button" id="search-next" class="icon-btn" data-i18n-title="search.nextTitle" title="下一个 Enter">↓</button>
+            <button type="button" id="search-close" class="icon-btn" data-i18n-title="search.closeTitle" title="关闭 Esc">✕</button>
+          </div>
+        </main>
+
+        <div class="gs-panel" id="gs-panel" hidden>
+          <div class="gs-head">
+            <input id="gs-input" type="search" data-i18n-placeholder="globalSearch.placeholder" placeholder="在所有打开的文件夹里找…" autocomplete="off" />
+            <button type="button" id="gs-close" class="icon-btn" data-i18n-title="globalSearch.closeTitle" title="关闭 Esc">✕</button>
+          </div>
+          <div class="gs-status" id="gs-status"></div>
+          <div class="gs-list" id="gs-list"></div>
+        </div>
+
+        <div class="help-panel" id="help-panel" hidden>
+          <div class="help-head">
+            <b data-i18n="bar.help">帮助</b>
+            <button type="button" id="help-close" class="icon-btn" data-i18n-title="search.closeTitle" title="关闭 Esc">✕</button>
+          </div>
+          <div class="help-body">
+            <section>
+              <h3 data-i18n="help.whatTitle">🗂️ Sheaf 是什么</h3>
+              <p data-i18n="help.whatBody">
+                一个装在你电脑里的本地 Markdown 写作 App。打开一个文件夹，一块画布直接写；写出来的还是普通
+                <code>.md</code>，摆在你自己的硬盘上，不锁进任何软件里。
+              </p>
+            </section>
+            <section>
+              <h3 data-i18n="help.highlightsTitle">✨ 核心亮点</h3>
+              <ul>
+                <li data-i18n="help.highlightDisk">💾 <strong>落盘到你的硬盘</strong>——写的每一个字，都是你电脑上的真文件</li>
+                <li data-i18n="help.highlightWysiwyg">🖋️ <strong>一块画布所见即所得</strong>——写的时候看到的，就是最终的样子</li>
+                <li data-i18n="help.highlightPlainMd">📄 <strong>永远是普通 .md</strong>——不锁进任何软件，随便换个工具都打得开</li>
+                <li data-i18n="help.highlightNative">💻 <strong>装在电脑里的真软件</strong>——双击就开，断网也能写</li>
+                <li data-i18n="help.highlightTools">🔍 <strong>查找、大纲、撤销，一个不缺</strong>——都是做完整的功能</li>
+              </ul>
+            </section>
+            <section>
+              <h3 data-i18n="help.howtoTitle">⚡ 怎么用（30 秒上手）</h3>
+              <ul>
+                <li data-i18n="help.howtoOpenFolder">📂 顶栏「打开文件夹」→ 左栏出现里面所有稿子，点哪篇写哪篇</li>
+                <li data-i18n="help.howtoAutosave">✍️ 直接写，停笔两秒自动存盘，不用记得按 Ctrl+S</li>
+                <li data-i18n="help.howtoImages">🖼️ 图片粘贴或拖进来，自动存进稿子旁边的 <code>images/</code></li>
+                <li data-i18n="help.howtoTable">📊 光标停进表格，右上角自动冒出加行/加列按钮</li>
+                <li data-i18n="help.howtoExport">📤 顶栏「导出」可以存成 .md、网页，或直接打印成 PDF</li>
+              </ul>
+            </section>
+            <section>
+              <h3 data-i18n="help.shortcutsTitle">⌨️ 快捷键</h3>
+              <table>
+                <tbody>
+                  <tr><td data-i18n="help.shortcutFind">当前稿子内查找</td><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td></tr>
+                  <tr><td data-i18n="help.shortcutGlobalFind">跨文件夹全局搜索</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd></td></tr>
+                  <tr><td data-i18n="help.shortcutToggleFiles">收起/展开文件栏</td><td><kbd>Ctrl</kbd>+<kbd>\</kbd></td></tr>
+                  <tr><td data-i18n="help.shortcutToggleOutline">收起/展开大纲</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>\</kbd></td></tr>
+                </tbody>
+              </table>
+            </section>
+          </div>
+        </div>
+
+        <aside class="pane pane-right">
+          <div class="pane-head" data-i18n="pane.outline">大纲</div>
+          <div class="pane-body" id="outline"></div>
+        </aside>
+      </div>
+
+      <footer class="status">
+        <span id="file-label" data-i18n="status.noFile">未打开文件</span>
+        <span id="save-label" data-tone="idle"></span>
+        <span id="hint-label"></span>
+        <span id="count-label">0 字</span>
+      </footer>
+    </div>
+
+    <input id="file-input" type="file" accept=".md,.markdown,.txt,text/markdown" hidden />
+    <input id="image-file" type="file" accept="image/*" multiple hidden />
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,41 @@
+name: Bug report
+description: Something is broken / 出了故障
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened / 发生了什么
+      description: What you did, what you expected, what you got.
+    validations:
+      required: true
+  - type: dropdown
+    id: data-loss
+    attributes:
+      label: Can this lose or corrupt a draft? / 会不会丢稿或写坏文件？
+      options:
+        - "No"
+        - "Yes"
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / 版本
+      description: e.g. 0.1.0 installer, or commit SHA
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / 系统
+      placeholder: Windows 11
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce / 复现步骤
+    validations:
+      required: true

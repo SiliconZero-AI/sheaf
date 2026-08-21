@@ -1,0 +1,39 @@
+node_modules/
+dist/
+test/.build/
+
+# 从 node_modules 复制来的 Vditor 运行时资源，npm 脚本自动生成
+public/vditor/
+
+# 运行时垃圾，不进仓库
+.playwright-mcp/
+*.log
+
+# 验证用的临时截图（放 scratchpad，别进仓库）
+*.png
+!public/*.png
+
+# Tauri 桌面图标是构建必需品，不能被上面那条 *.png 吞掉
+!src-tauri/icons/*.png
+
+# README 用的正式截图，不是临时验证图（中英文各一张，界面语言跟着 README 语言走）
+!docs/screenshot.png
+!docs/screenshot-en.png
+
+# 移动端图标不入库——阶段 2 只打 Windows，需要时 npx tauri icon 再生成
+src-tauri/icons/android/
+src-tauri/icons/ios/
+
+# 内部工作文档：规划/公关话术/竞品调研这类笔记，不面向开源读者
+# （对外的进度信息走 README.md 的「路线图」小节）
+.grok/
+docs/research/
+docs/BLUEPRINT.md
+docs/COMPARE.md
+docs/STORY.md
+ROADMAP.md
+CLAUDE.md
+
+# 官网源码/文案已拆到独立私有仓库 sheaf-site，跟这个仓库的开源边界不同
+site/
+docs/SITE-COPY.md

@@ -1,0 +1,20 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- 写作台：几张稿子错落堆着。对应「同时开多个文件夹」 -->
+  <defs>
+    <linearGradient id="top" x1="0" y1="0" x2=".4" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dceae6"/>
+    </linearGradient>
+    <linearGradient id="mid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7fd3bd"/><stop offset="1" stop-color="#4bab93"/>
+    </linearGradient>
+    <linearGradient id="bot" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3aa38c"/><stop offset="1" stop-color="#256b5b"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="34" width="44" height="16" rx="3" fill="url(#bot)" transform="rotate(-6 32 42)"/>
+  <rect x="11" y="26" width="42" height="16" rx="3" fill="url(#mid)" transform="rotate(-2 32 34)"/>
+  <rect x="13" y="12" width="38" height="26" rx="3.5" fill="url(#top)" transform="rotate(3 32 25)"/>
+  <g transform="rotate(3 32 25)">
+    <path d="M19 20H43M19 25H43M19 30H35" stroke="#8fb3aa" stroke-width="2" stroke-linecap="round"/>
+  </g>
+</svg>
