@@ -82,6 +82,10 @@ npm test           # 图片落盘的回归测试，守着两条曾经真实发�
 
 写作面使用 [Vditor](https://github.com/Vanessa219/vditor)（MIT）。
 
+## 代码签名政策
+
+Sheaf v0.1.0 当前尚未签名。计划采用的可验证构建、审查与签名规则见 [Code signing policy](CODE_SIGNING_POLICY.md)。
+
 ## 📜 License
 
 MIT。可自由商用，无需另行授权。

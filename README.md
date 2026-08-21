@@ -82,6 +82,10 @@ npm test           # regression tests for image handling, guarding two real data
 
 The writing surface is [Vditor](https://github.com/Vanessa219/vditor) (MIT).
 
+## Code signing policy
+
+Sheaf v0.1.0 is currently unsigned. See the [Code signing policy](CODE_SIGNING_POLICY.md) for the planned verified build, review, and signing controls.
+
 ## 📜 License
 
 MIT. Free for commercial use, no separate authorization needed.
