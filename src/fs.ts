@@ -363,6 +363,26 @@ export async function fileHandleIfExists(path: string): Promise<FileHandle | nul
 }
 
 /**
+ * `abs` 落在 `root` 里面就返回相对路径，否则 null。用来判断一个绝对路径
+ * 到底是「某个工作区里的一篇」还是真散篇——判错的后果不是不高亮那么轻：
+ * 误判成散篇，spaceId 和相对路径都会留空，那篇里所有相对路径的图会全变裂图。
+ *
+ * 两种分隔符都得认（系统对话框和双击给回来的是反斜杠，扫树时拼的是正斜杠）；
+ * Windows 盘符和目录名不区分大小写，所以只拿小写去比，**返回的仍是原样大小写**
+ * 的相对路径——findFile 要拿它跟扫树时记下的 path 逐字比对。
+ *
+ * 必须卡在分隔符上：`D:/note` 不能把 `D:/notebook/a.md` 认成自己的。
+ */
+export function relativePathInside(root: string, abs: string): string | null {
+  const r = root.replace(/\\/g, "/").replace(/\/+$/, "");
+  const f = abs.replace(/\\/g, "/");
+  if (r === "") return null;
+  if (!f.toLowerCase().startsWith(`${r.toLowerCase()}/`)) return null;
+  const rel = f.slice(r.length + 1);
+  return rel === "" ? null : rel;
+}
+
+/**
  * 从 IndexedDB 取回的句柄权限通常回落到 prompt，必须重新确认。
  * request=true 时会弹窗，因此只能在用户手势里调用。
  */

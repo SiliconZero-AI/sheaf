@@ -26,3 +26,8 @@ tauri-plugin-log = "2"
 tauri-plugin-fs = "2.5.1"
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-single-instance = "2"
+
+# 只为了一个函数：AllowSetForegroundWindow（见 lib.rs 的 allow_foreground_handoff）。
+# 不是新引入的包——tauri / tao / 各插件已经在编译 windows-sys 0.61，这里只是显式声明用它。
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }

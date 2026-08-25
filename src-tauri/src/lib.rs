@@ -49,8 +49,34 @@ fn bring_to_front<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
     }
 }
 
+/// 把「谁有资格把窗口提到最前」这份权限让出去。
+///
+/// 双击 .md 时，前台是资源管理器，它启动的**新进程**才有资格调 `SetForegroundWindow`；
+/// 已经在跑的那个 Sheaf 没有。而 `tauri-plugin-single-instance` 2.4.3 把参数用
+/// `WM_COPYDATA` 转发过去之后就直接 `exit(0)`——源码里确认没有把这份权限交出去。
+/// 结果就是那边 `set_focus()` 拿不到键盘焦点：窗口浮上来了，却得先点一下才能打字。
+///
+/// 这里在进程最开头把权限让给所有人（`ASFW_ANY`）。对第一个实例是空操作；
+/// 对随后被插件拦下来的第二个实例，这一让正好补上缺的那一环——
+/// 它此刻手里有权限，让完再去发 `WM_COPYDATA`，老实例那边就能真正抢到前台。
+///
+/// 位置不能挪：必须在 `tauri::Builder` 之前，因为插件的 setup（也就是发消息然后退出的那段）
+/// 是在 `.run()` 里才跑的。
+#[cfg(windows)]
+fn allow_foreground_handoff() {
+    // ASFW_ANY = 0xFFFFFFFF：不指定某个进程，允许任何进程提自己的窗口
+    const ASFW_ANY: u32 = u32::MAX;
+    // 失败没有补救办法，也不该因此拦住启动——顶多退回「窗口浮上来但要手点一下」
+    unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(ASFW_ANY);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    allow_foreground_handoff();
+
     let initial_path = extract_md_path(&std::env::args().collect::<Vec<_>>());
 
     tauri::Builder::default()

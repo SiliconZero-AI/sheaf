@@ -39,6 +39,7 @@ import {
   saveAs,
   fileHandleFromPath,
   fileHandleIfExists,
+  relativePathInside,
   loosePathOf,
   readStamp,
   stampChanged,
@@ -901,11 +902,37 @@ async function pickDirectory(): Promise<void> {
 }
 
 /**
+ * 一个绝对路径落在哪个已挂载的工作区里。找不到就是真散篇。
+ * 只有桌面壳的工作区句柄带 path，浏览器句柄没有，所以浏览器下这里一律返回 null。
+ */
+function locateInSpaces(abs: string): { spaceId: string; node: FileNode } | null {
+  for (const space of state.spaces) {
+    const root = space.handle.path;
+    if (!root) continue;
+    const rel = relativePathInside(root, abs);
+    if (!rel) continue;
+    const node = findFile(space.tree, rel);
+    if (node) return { spaceId: space.id, node };
+  }
+  return null;
+}
+
+/**
  * 打开一篇不属于任何工作区的稿子（顶栏「打开单篇」，或直接拖一个 .md 进来）。
  * 单开、选择器、拖拽三条路都走这里——之前每条路各写一遍，
  * 8 月 15 号就是在其中一条上漏了编码保护和 images.reset() 的时序，丢过稿。
  */
 async function openLooseFile(handle: FileHandle): Promise<void> {
+  // 这一篇可能其实就躺在某个已挂载的工作区里——双击、拖拽、单开三条路都可能撞上。
+  // 撞上了就得按「工作区里的那篇」开：左栏才会高亮，图片才按相对路径找得到，
+  // 记忆也才会记成工作区那种。留在散篇这条路上 spaceId / path 是空的，
+  // 那篇里所有相对路径的图会全变裂图——这条比不高亮严重得多。
+  const abs = loosePathOf(handle);
+  const inSpace = abs ? locateInSpaces(abs) : null;
+  if (inSpace) {
+    await openFile(inSpace.spaceId, inSpace.node);
+    return;
+  }
   if (state.dirty && state.file && !(await save())) {
     editor.tip(t().tip.unsavedBeforeOpen, 5000);
     return;

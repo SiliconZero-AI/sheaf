@@ -43,4 +43,6 @@ require("./stamp.test.cjs");
 console.log("");
 require("./last-file.test.cjs");
 console.log("");
+require("./inside-space.test.cjs");
+console.log("");
 require("./images.test.cjs");
