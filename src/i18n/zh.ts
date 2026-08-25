@@ -82,6 +82,7 @@ export const zh: Dict = {
     shortcutGlobalFind: "跨文件夹全局搜索",
     shortcutToggleFiles: "收起/展开文件栏",
     shortcutToggleOutline: "收起/展开大纲",
+    versionLabel: "版本",
   },
   tree: {
     resumeHint: "点一下继续用",

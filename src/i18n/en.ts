@@ -82,6 +82,7 @@ export const en: Dict = {
     shortcutGlobalFind: "Search across all folders",
     shortcutToggleFiles: "Collapse/expand the file panel",
     shortcutToggleOutline: "Collapse/expand the outline",
+    versionLabel: "Version",
   },
   tree: {
     resumeHint: "Click to resume",

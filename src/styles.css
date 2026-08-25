@@ -1374,6 +1374,7 @@ body {
   color: var(--ink-3);
 }
 
+
 .help-body tr:first-child td {
   border-top: 0;
 }
@@ -1393,6 +1394,22 @@ body {
   font: 500 11px/1.4 ui-monospace, SFMono-Regular, Consolas, "Cascadia Code", monospace;
   color: var(--ink-2);
   text-align: center;
+}
+
+/* 版本号是自查信息，不是内容：跟正文同一条分隔线，但字号更小、颜色更淡 */
+.help-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 10px 4px 2px;
+  border-top: 1px solid var(--line);
+  font: 400 12px/1.5 var(--font-ui);
+  color: var(--ink-3);
+}
+
+.help-version {
+  font: 400 12px/1.5 ui-monospace, SFMono-Regular, Consolas, "Cascadia Code", monospace;
+  color: var(--ink-2);
 }
 
 /* ---------- 外部改动冲突 ---------- */

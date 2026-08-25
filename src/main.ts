@@ -38,6 +38,8 @@ import {
   pickFile as chooseFile,
   saveAs,
   fileHandleFromPath,
+  fileHandleIfExists,
+  loosePathOf,
   readStamp,
   stampChanged,
   UNKNOWN_STAMP,
@@ -91,6 +93,7 @@ const dom = {
   helpBtn: need<HTMLButtonElement>("#btn-help"),
   helpPanel: need<HTMLDivElement>("#help-panel"),
   helpClose: need<HTMLButtonElement>("#help-close"),
+  helpVersion: need<HTMLSpanElement>("#help-version"),
   conflictMask: need<HTMLDivElement>("#conflict-mask"),
   conflictFile: need<HTMLElement>("#conflict-file"),
   conflictMineMeta: need<HTMLSpanElement>("#conflict-mine-meta"),
@@ -273,7 +276,11 @@ const search = new Search(
 const tableToolbar = new TableToolbar(dom.canvas, () =>
   dom.editor.querySelector<HTMLElement>(".vditor-ir .vditor-reset"),
 );
-const help = new HelpPanel({ panel: dom.helpPanel, close: dom.helpClose });
+const help = new HelpPanel({
+  panel: dom.helpPanel,
+  close: dom.helpClose,
+  version: dom.helpVersion,
+});
 
 // ---------- 状态栏 ----------
 
@@ -828,7 +835,7 @@ async function doOpenFile(spaceId: string, node: FileNode): Promise<void> {
     editor.setValue(hydrated, true);
     tree.setActive(spaceId, node.path);
     const index = state.spaces.findIndex((item) => item.id === spaceId);
-    if (index >= 0) await rememberLastFile({ index, path: node.path });
+    if (index >= 0) await rememberLastFile({ kind: "space", index, path: node.path });
   } catch (error) {
     console.error("[Sheaf] 打开失败", error);
     editor.tip(t().tip.openFailed, 3000);
@@ -914,6 +921,10 @@ async function openLooseFile(handle: FileHandle): Promise<void> {
     setDoc(handle, "", "", file.name, loaded, stamp);
     editor.setValue(loaded.text, true);
     tree.setActive(null, null);
+    // 记住这一篇，下次开 Sheaf 回到它。拿不到绝对路径（浏览器句柄）就不记——
+    // 记了也开不回来，反而会把工作区里那篇正常的记忆顶掉
+    const loosePath = loosePathOf(handle);
+    if (loosePath) await rememberLastFile({ kind: "loose", path: loosePath });
   } catch (error) {
     console.error("[Sheaf] 打开失败", error);
     editor.tip(t().tip.openFailed, 3000);
@@ -1042,10 +1053,18 @@ async function boot(): Promise<void> {
     // 启动时不能弹授权框（不是用户手势），拿不到权限就把「继续上次」露出来等他点
     await restoreSpaces(handles, false);
   }
-  if (isDesktop) {
-    await setupOsFileOpen();
-    await setupNativeFocus();
+  // 双击 .md 冷启动进来的那一篇优先于「上次那篇」：它是用户此刻的明确意图。
+  // 排在恢复之前领走，否则会先渲染一篇没人要的稿子再被顶掉，画面闪一下
+  const openedByOs = isDesktop ? await setupOsFileOpen() : false;
+  const last = await recallLastFile();
+  // 散篇不挂在任何工作区上，restoreSpaces 恢复不到它，得单独开一次
+  if (!openedByOs && last?.kind === "loose") {
+    const handle = await fileHandleIfExists(last.path);
+    // 文件已经被删了 / 挪走了 / 在拔掉的移动硬盘上，就当没记过。
+    // 启动时甩一句「打开失败」，用户既修不了也不想看
+    if (handle) await openLooseFile(handle);
   }
+  if (isDesktop) await setupNativeFocus();
 }
 
 /**
@@ -1066,13 +1085,16 @@ async function setupNativeFocus(): Promise<void> {
  * 操作系统其实是想再启一个进程——Rust 那边的 single-instance 插件拦住它，转成 open-file 事件转发过来。
  * 两条路径最后都落到同一个 openLooseFile，跟「打开单篇」「拖一个 .md 进来」是同一套逻辑，不重开一份。
  */
-async function setupOsFileOpen(): Promise<void> {
+async function setupOsFileOpen(): Promise<boolean> {
   const openPath = (path: string) => void openLooseFile(fileHandleFromPath(path));
 
   await listen<string>("open-file", (event) => openPath(event.payload));
 
   const pending = await invoke<string | null>("take_pending_file");
-  if (pending) openPath(pending);
+  if (!pending) return false;
+  // 这一次要等它开完：boot 得据此决定还要不要恢复「上次那篇」
+  await openLooseFile(fileHandleFromPath(pending));
+  return true;
 }
 
 /**
@@ -1114,6 +1136,10 @@ async function restoreSpaces(
   if (broken > 0) {
     editor.tip(t().tip.restoreBroken(broken), 7000);
   }
+
+  // 上次开的是散篇的话，这里就别抢着开工作区里的第一篇：一来会闪一下再被 boot 顶掉，
+  // 二来 doOpenFile 会顺手把「上次那篇」的记忆改写成工作区那篇，散篇就再也回不来了
+  if (last?.kind === "loose") return;
 
   const target = (last && bySource.get(last.index)) || state.spaces[0];
   if (!target || state.dirty) return;
