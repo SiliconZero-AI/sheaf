@@ -1095,6 +1095,31 @@ async function boot(): Promise<void> {
 }
 
 /**
+ * 聚焦编辑器，并把光标摆到正文末尾。
+ *
+ * 落点为什么必须是末尾、不能是开头：我们在「从外面双击进来」这条路上会主动聚焦，
+ * 而 Vditor 的 focus() 落点是文档开头——那位置通常正好压在标题的第一个字前面。
+ * 用户不看就敲一个字，改的是标题，两秒后自动保存直接落盘。
+ * 末尾是唯一「敲下去只会追加、不会动到已有内容」的落点。
+ *
+ * Vditor 没有「聚焦到末尾」的 API（只有 focus()），所以自己用 Selection 摆。
+ */
+function focusEditorEnd(): void {
+  editor.focus();
+  const reset = dom.editor.querySelector<HTMLElement>(".vditor-ir .vditor-reset");
+  if (!reset) return;
+  const range = document.createRange();
+  range.selectNodeContents(reset);
+  // false = 折叠到末端
+  range.collapse(false);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  // 程序设的 selection 浏览器不保证滚进视野，长文里光标会停在屏幕外
+  reset.lastElementChild?.scrollIntoView({ block: "end" });
+}
+
+/**
  * 桌面壳里必须用 Tauri 的原生窗口焦点事件，不能只靠网页的 window focus。
  * 实测（2026-08-24 真机）：只是点任务栏/标题栏切回 Sheaf 时，WebView2 的内容区
  * 并没有拿到键盘焦点，网页那个 focus 根本不发——非得点进正文才发。
@@ -1118,7 +1143,7 @@ async function setupOsFileOpen(): Promise<boolean> {
     // 从外面双击进来的人，下一步就是想写字。
     // Rust 那边的 bring_to_front 只负责把窗口提到前台——窗口有焦点不等于正文有光标，
     // 全仓此前没有一处 focus 过编辑器，所以一直得先点一下正文才能打字。
-    editor.focus();
+    focusEditorEnd();
   };
 
   await listen<string>("open-file", (event) => void openPath(event.payload));
