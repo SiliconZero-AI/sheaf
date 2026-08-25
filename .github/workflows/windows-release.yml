@@ -6,8 +6,10 @@ on:
     tags:
       - "v*"
 
+# 打 tag 触发时要把安装包发到 Release 上，所以需要写权限。
+# workflow_dispatch 手动跑不会走发布那步，只出 artifact。
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   windows-package:
@@ -67,3 +69,26 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
+
+      # 建成草稿而不是直接发出去：装出来的包是用户唯一真正拿到的东西，
+      # 值得在它公开之前过一次人眼。上传、算校验值、写说明这些烦人的活已经自动了，
+      # 剩下的只是看一眼再点「Publish release」。
+      #
+      # 说明正文在 .github/RELEASE_NOTES_TEMPLATE.md，改文案不用动这份 YAML。
+      # 那里的 SmartScreen 一段在安装包签名之前不能删——用户第一次运行必然撞上
+      # 「未知发布者」，不先讲清楚，普通人会直接把下载删掉。
+      - name: Draft the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $dir = "src-tauri/target/release/bundle/nsis"
+          $installer = Get-ChildItem "$dir/*-setup.exe" | Select-Object -First 1
+          if ($null -eq $installer) { throw "NSIS installer was not found" }
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $notes = Get-Content .github/RELEASE_NOTES_TEMPLATE.md -Raw
+          $notes = $notes.Replace('{{INSTALLER}}', $installer.Name).Replace('{{SHA256}}', $hash)
+          Set-Content -Path release-notes.md -Value $notes -Encoding utf8
+          gh release create "${{ github.ref_name }}" "$($installer.FullName)" "$dir/SHA256SUMS.txt" --title "Sheaf ${{ github.ref_name }}" --notes-file release-notes.md --draft
+          Write-Output "Draft release ${{ github.ref_name }} created. Review it on GitHub, then click Publish release."
