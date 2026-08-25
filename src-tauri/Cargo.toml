@@ -1,6 +1,6 @@
 [package]
 name = "sheaf"
-version = "0.1.0"
+version = "0.1.1"
 description = "本地 Markdown 写作 App"
 authors = ["Mika"]
 license = "MIT"
