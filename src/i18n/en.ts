@@ -102,6 +102,7 @@ export const en: Dict = {
     unsaved: "Unsaved",
     savedAt: (time) => `Saved ${time}`,
     conflict: "Changed outside · saving paused",
+    missing: "Gone from disk · saving paused",
   },
   conflict: {
     title: "This file was changed outside Sheaf",
@@ -142,6 +143,8 @@ export const en: Dict = {
     removedFromList: (name) => `Removed “${name}” from the list — nothing on disk was touched`,
     readonlyEncoding: (encoding) => `This file is ${encoding}-encoded. Sheaf can only save UTF-8, so it's set to read-only — convert it with another tool first`,
     unsavedBeforeSwitch: "This draft hasn't saved yet — finish that before switching drafts",
+    fileMissing: "This file is gone from disk. Your text is still here — press Ctrl+S to write it back",
+    fileRestored: "Written back to disk",
     openFailed: "Couldn't open this file",
     pickerBusy: "The system file dialog is already open — check that window first (it may be behind others)",
     pickerOpeningDir: "Opening the system file dialog… if you don't see it, check the taskbar — it may be behind another window",

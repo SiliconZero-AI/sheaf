@@ -12,6 +12,7 @@ const args = [
   "--ignoreConfig",
   "src/images.ts",
   "src/fs.ts",
+  "src/anchor.ts",
   "src/vite-env.d.ts",
   "--outDir",
   outDir,
@@ -44,5 +45,9 @@ console.log("");
 require("./last-file.test.cjs");
 console.log("");
 require("./inside-space.test.cjs");
+console.log("");
+require("./anchor.test.cjs");
+console.log("");
+require("./watch-rules.test.cjs");
 console.log("");
 require("./images.test.cjs");

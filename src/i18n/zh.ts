@@ -102,6 +102,7 @@ export const zh: Dict = {
     unsaved: "未保存",
     savedAt: (time) => `已保存 ${time}`,
     conflict: "外部已改动 · 暂停保存",
+    missing: "磁盘上已没有这篇 · 暂停保存",
   },
   conflict: {
     title: "这个文件在 Sheaf 之外被改过",
@@ -141,6 +142,8 @@ export const zh: Dict = {
     removedFromList: (name) => `已把「${name}」移出列表，磁盘上的文件没有动`,
     readonlyEncoding: (encoding) => `这篇是 ${encoding} 编码，Sheaf只能存 UTF-8。已设为只读，先用别的工具转码再来编辑`,
     unsavedBeforeSwitch: "这一篇还没保存成功，先处理完再切稿",
+    fileMissing: "这篇在磁盘上已经不见了。内容还在，按 Ctrl+S 可以重新写回去",
+    fileRestored: "已把这篇重新写回磁盘",
     openFailed: "打不开这个文件",
     pickerBusy: "系统文件框已经开着了，先去处理那个窗口（可能在任务栏里）",
     pickerOpeningDir: "正在打开系统文件框…如果没看到，去任务栏找一下，它可能藏在别的窗口后面",

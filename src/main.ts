@@ -44,10 +44,26 @@ import {
   readStamp,
   stampChanged,
   UNKNOWN_STAMP,
+  hitsWatchedFile,
+  samePath,
+  missingStep,
+  positionKey,
+  recallPositions,
+  rememberPosition,
+  type FilePosition,
+  type LastFile,
   type DiskStamp,
   type DirHandle,
   type FileHandle,
 } from "./fs";
+import {
+  applyCursorAnchor,
+  applyScrollAnchor,
+  captureCursorAnchor,
+  captureScrollAnchor,
+  type DocAnchor,
+} from "./anchor";
+import { DirWatcher, parentDir, type WatchTarget } from "./watch";
 
 function need<T extends HTMLElement>(selector: string): T {
   const el = document.querySelector<T>(selector);
@@ -137,6 +153,11 @@ interface State {
   stamp: DiskStamp;
   /** 已认出外部改动、用户还没选留哪份。为 true 时一律不写盘 */
   conflict: boolean;
+  /**
+   * 这篇在磁盘上已经没了（外部删掉、挪走）。内容留在画布上，但自动保存停掉——
+   * 用户按 Ctrl+S 才算「我要把它写回去」，那是明确表态，不该由自动保存代劳。
+   */
+  missing: boolean;
 }
 
 const state: State = {
@@ -153,6 +174,7 @@ const state: State = {
   writable: true,
   stamp: UNKNOWN_STAMP,
   conflict: false,
+  missing: false,
 };
 
 let nextSpaceId = 1;
@@ -302,6 +324,10 @@ function renderStatus(): void {
     // 排在只读/保存中之前：自动保存已经停了，这是此刻最要紧的状态
     dom.saveLabel.textContent = t().status.conflict;
     dom.saveLabel.dataset.tone = "conflict";
+  } else if (state.missing) {
+    // 同理：自动保存也停了，而且原因跟冲突不一样，得让用户看得出区别
+    dom.saveLabel.textContent = t().status.missing;
+    dom.saveLabel.dataset.tone = "conflict";
   } else if (!state.writable) {
     dom.saveLabel.textContent = t().status.readonly(encodingLabel(state.encoding));
     dom.saveLabel.dataset.tone = "dirty";
@@ -357,6 +383,87 @@ function ensureImageTarget(): boolean {
   return false;
 }
 
+// ---------- 每篇上次读到哪 ----------
+//
+// 记的是内容锚点（见 anchor.ts）：「哪个标题 + 往下多少字」，不是像素、也不是全局字符数。
+// 那两样等于记页码——AI 往文件前面插三段，页码全废，而那正是 Sheaf 的主场景。
+
+/** 画布的滚动容器，同时也是正文根节点。锚点的取和放都以它为准 */
+function scrollerEl(): HTMLElement | null {
+  return dom.editor.querySelector<HTMLElement>(".vditor-ir .vditor-reset");
+}
+
+/** 当前这篇在位置表里的键。记不住的（浏览器散篇没有绝对路径）返回 null */
+function currentPositionKey(): string | null {
+  if (!state.file) return null;
+  if (state.spaceId) {
+    const index = state.spaces.findIndex((item) => item.id === state.spaceId);
+    return index >= 0 ? positionKey({ kind: "space", index, path: state.path }) : null;
+  }
+  const abs = loosePathOf(state.file);
+  return abs ? positionKey({ kind: "loose", path: abs }) : null;
+}
+
+let positionTimer = 0;
+
+/** 现在这一刻的位置。切稿、关窗口、以及用户停下来的时候都要抓一次 */
+function capturePosition(): FilePosition | null {
+  const root = scrollerEl();
+  if (!root) return null;
+  return { scroll: captureScrollAnchor(root), cursor: captureCursorAnchor(root), at: Date.now() };
+}
+
+async function savePositionNow(): Promise<void> {
+  window.clearTimeout(positionTimer);
+  positionTimer = 0;
+  // 载入中抓到的是上一篇的残影或者空文档，记下去等于把好记录覆盖成垃圾
+  if (state.loading) return;
+  const key = currentPositionKey();
+  const position = key ? capturePosition() : null;
+  if (key && position) await rememberPosition(key, position);
+}
+
+/**
+ * 用户滚一下、点一下就记一次太吵，攒一拍再落盘。
+ * 落盘而不是只存内存，是因为「关掉 Sheaf 重开还在原处」也算这个功能的一部分——
+ * 指望退出时统一写，崩一次就全没了。
+ */
+function schedulePositionSave(): void {
+  if (!ready || !state.file) return;
+  window.clearTimeout(positionTimer);
+  positionTimer = window.setTimeout(() => void savePositionNow(), 600);
+}
+
+/**
+ * 打开一篇之后把位置放回去。
+ * 必须等渲染完这一帧：setValue 是同步的，但 Vditor 的排版排到下一帧，
+ * 早了量出来的高度全是错的（这是 0.1.1 恢复滚动位置时就踩过的同一条）。
+ */
+function restorePosition(position: FilePosition | null, focus: boolean): void {
+  const apply = () => {
+    const root = scrollerEl();
+    if (!root) return;
+    if (focus) {
+      // 有记录就回记录处；没有才落到正文末尾（末尾是唯一「敲下去只会追加」的落点）
+      if (position?.cursor && applyCursorAnchor(root, position.cursor)) editor.focus();
+      else focusEditorEnd();
+    }
+    // 滚动放在最后：设光标本身会把视图带走，先滚再设等于白滚
+    if (position?.scroll) applyScrollAnchor(root, position.scroll);
+  };
+  requestAnimationFrame(() => requestAnimationFrame(apply));
+}
+
+/** 打开这篇时该恢复到哪。没记过就返回 null */
+async function positionFor(last: LastFile): Promise<FilePosition | null> {
+  try {
+    return (await recallPositions())[positionKey(last)] ?? null;
+  } catch (error) {
+    console.warn("[Sheaf] 读不出阅读位置", error);
+    return null;
+  }
+}
+
 // ---------- 保存 ----------
 
 function scheduleSave(): void {
@@ -377,6 +484,9 @@ async function doSave(): Promise<boolean> {
   if (!state.writable) return true;
   // 冲突没解决之前一个字都不许落盘，否则就是在盖掉外部改动——本函数存在的全部意义
   if (state.conflict) return false;
+  // 磁盘上已经没有这篇了。自动保存把它悄悄重建出来，等于替用户否决了他刚做的删除；
+  // 要写回去得他自己按 Ctrl+S（那条路会先把 missing 摘掉再调进来）
+  if (state.missing) return false;
   if (!state.dirty) return true;
   window.clearTimeout(saveTimer);
   state.saving = true;
@@ -438,8 +548,13 @@ async function doSave(): Promise<boolean> {
 /** 把画布内容换成磁盘上的那份，并尽量把用户正在看的位置留在原地 */
 async function reloadFromDisk(): Promise<boolean> {
   if (!state.file) return false;
-  const scroller = dom.editor.querySelector<HTMLElement>(".vditor-ir .vditor-reset");
-  const keepScroll = scroller?.scrollTop ?? 0;
+  // 换内容之前先把「读到哪、光标在哪」记成内容锚点。
+  // 这里曾经记的是 scrollTop 像素值，整篇一变长变短落点就偏
+  // （实测原本在第 20 节、同步完落到第 15–18 节）——那是「记页码」，
+  // 而外部改动恰恰就是在改页码。
+  const before = capturePosition();
+  const hadCursor = before?.cursor !== null && before?.cursor !== undefined;
+  const scroller = scrollerEl();
   state.loading = true;
   try {
     const loaded = await readText(state.file);
@@ -451,14 +566,9 @@ async function reloadFromDisk(): Promise<boolean> {
     setDoc(state.file, state.spaceId, state.path, state.name, loaded, stamp);
     // 撤销栈必须清：这些内容不是用户敲出来的，留着撤销会把外部那份「撤」成旧内容
     editor.setValue(hydrated, true);
-    // 换完内容再滚回去。setValue 是同步的，但 Vditor 的渲染排到下一帧，早了会被重置
-    if (scroller && keepScroll > 0) {
-      // 不自己夹上界：内容变短时浏览器会 clamp 到底部，比拿一个可能还没算完的
-      // scrollHeight 去算更稳
-      requestAnimationFrame(() => {
-        scroller.scrollTop = keepScroll;
-      });
-    }
+    // 换完内容再按锚点滚回去。setValue 是同步的，但 Vditor 的渲染排到下一帧，早了量不准。
+    // 光标只在原本就在画布里时才放回去——用户人在别的窗口，不该被抢焦点
+    if (scroller && before) restorePosition(before, hadCursor);
     return true;
   } catch (error) {
     console.error("[Sheaf] 重新读取失败", error);
@@ -592,6 +702,118 @@ async function checkExternalChange(): Promise<void> {
     return;
   }
   if (await reloadFromDisk()) editor.tip(t().conflict.reloaded, 3000);
+}
+
+// ---------- 实时监听 ----------
+//
+// ①② 走的是「切回窗口才对表」，这一段把它升级成「外面一改就对表」。
+// 判断谁变了、变没变，仍然复用上面那一套（stamp + 冲突框），不另起一份逻辑。
+
+const watcher = new DirWatcher((paths) => void onDiskEvents(paths));
+
+/** 当前这篇在磁盘上的绝对路径。浏览器句柄没有路径，返回 null */
+function currentPath(): string | null {
+  return state.file ? loosePathOf(state.file) : null;
+}
+
+/**
+ * 要盯哪些目录。**盯目录不盯文件**：AI 改文件常用「先写临时文件、再改名盖过来」，
+ * 盯着那个文件本身会跟丢、还会误报「文件没了」。
+ * 顺带，盯住工作区根目录才知道 AI 什么时候新建了一篇（左栏要冒出来）。
+ */
+function watchTargets(): WatchTarget[] {
+  const targets: WatchTarget[] = [];
+  for (const space of state.spaces) {
+    if (space.handle.path) targets.push({ path: space.handle.path, recursive: true });
+  }
+  // 散篇不在任何工作区里，得单独盯它所在的那一层
+  if (!state.spaceId) {
+    const dir = currentPath() ? parentDir(currentPath() as string) : null;
+    if (dir && !targets.some((item) => item.path === dir)) {
+      targets.push({ path: dir, recursive: false });
+    }
+  }
+  return targets;
+}
+
+/** 工作区列表或当前这篇变了就重挂。桌面壳独有——浏览器那边没有这个能力 */
+function refreshWatchers(): void {
+  if (!isDesktop) return;
+  void watcher.apply(watchTargets());
+}
+
+let rescanTimer = 0;
+
+/**
+ * 左栏刷新攒一拍再做：全目录重扫比对表贵得多，AI 连着写十个文件不该扫十遍。
+ * 只刷新列表，**不自动切**过去——用户正在写的那篇不能被别人的动作顶掉。
+ */
+function scheduleTreeRefresh(): void {
+  window.clearTimeout(rescanTimer);
+  rescanTimer = window.setTimeout(() => {
+    void (async () => {
+      for (const space of state.spaces) {
+        try {
+          await rescan(space);
+        } catch (error) {
+          console.warn("[Sheaf] 重扫文件夹失败", space.tree.name, error);
+        }
+      }
+    })();
+  }, 600);
+}
+
+/**
+ * 一批监听事件到手。
+ *
+ * 事件类型一概不信，只当作「该去看一眼了」的信号——同一个动作在 Windows 上
+ * 有时报 modify、有时报 remove+create，认类型必翻车。真相一律由 stat 给。
+ */
+async function onDiskEvents(paths: string[]): Promise<void> {
+  if (!ready) return;
+  const target = currentPath();
+  if (hitsWatchedFile(paths, target)) {
+    await syncCurrentFile();
+  }
+  // 别的文件动了（AI 新建、改名、删除）→ 左栏要跟上
+  if (paths.some((path) => !samePath(path, target))) scheduleTreeRefresh();
+}
+
+/**
+ * 当前这篇被外面动过了，去看一眼到底怎么了。
+ *
+ * 「看不见」不等于「没了」：改名替换那一瞬间有个真实空窗——旧的已经拿走、
+ * 新的还没放上。这时候下结论就会把用户正开着的稿子判成「文件没了」，
+ * 是这个功能最容易翻车的地方。所以先等（missingStep 说了算），等够了才认。
+ */
+async function syncCurrentFile(startedAt = Date.now()): Promise<void> {
+  // 自己刚写完盘也会触发监听。写盘期间来的事件一律不处理，
+  // 写完那一下 doSave 会把 stamp 换成自己写出来的样子，下一次对表自然对得上
+  if (state.saving || state.loading || state.conflict) return;
+  const path = currentPath();
+  if (!path) return;
+
+  const alive = await fileHandleIfExists(path);
+  if (alive) {
+    if (state.missing) {
+      // 之前判过「没了」，现在它回来了（多半就是改名替换完成）——恢复正常
+      state.missing = false;
+      renderStatus();
+    }
+    await guardedCheck();
+    return;
+  }
+
+  const step = missingStep(Date.now() - startedAt);
+  if (step.verdict === "wait") {
+    window.setTimeout(() => void syncCurrentFile(startedAt), step.retryInMs);
+    return;
+  }
+  if (state.missing) return;
+  // 内容留在画布上不动，只停掉自动保存。清空画布等于替用户丢稿
+  state.missing = true;
+  renderStatus();
+  editor.tip(t().tip.fileMissing, 8000);
 }
 
 /** 稿件名去掉扩展名，给导出的文件用 */
@@ -791,6 +1013,7 @@ function setDoc(
   // 换了一篇就是一个全新的对照基准，上一篇没解决的冲突不能跟着传过来
   state.stamp = stamp;
   state.conflict = false;
+  state.missing = false;
   lastEditAt = null;
   facts = null;
   hideConflict();
@@ -821,6 +1044,8 @@ async function doOpenFile(spaceId: string, node: FileNode): Promise<void> {
     editor.tip(t().tip.unsavedBeforeSwitch, 5000);
     return;
   }
+  // 切走之前把上一篇读到哪记下来，切回来才回得到原处
+  await savePositionNow();
   state.loading = true;
   try {
     // 先取 stamp 再读内容：万一读的这一瞬间文件正被改，stamp 会「偏旧」，
@@ -836,7 +1061,12 @@ async function doOpenFile(spaceId: string, node: FileNode): Promise<void> {
     editor.setValue(hydrated, true);
     tree.setActive(spaceId, node.path);
     const index = state.spaces.findIndex((item) => item.id === spaceId);
-    if (index >= 0) await rememberLastFile({ kind: "space", index, path: node.path });
+    if (index >= 0) {
+      const last: LastFile = { kind: "space", index, path: node.path };
+      await rememberLastFile(last);
+      // 上次读到哪就回到哪。点左栏切稿不抢焦点——用户可能只是想扫一眼
+      restorePosition(await positionFor(last), false);
+    }
   } catch (error) {
     console.error("[Sheaf] 打开失败", error);
     editor.tip(t().tip.openFailed, 3000);
@@ -937,6 +1167,7 @@ async function openLooseFile(handle: FileHandle): Promise<void> {
     editor.tip(t().tip.unsavedBeforeOpen, 5000);
     return;
   }
+  await savePositionNow();
   state.loading = true;
   try {
     const stamp = await readStamp(handle);
