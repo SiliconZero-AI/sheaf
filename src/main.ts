@@ -1113,14 +1113,20 @@ async function setupNativeFocus(): Promise<void> {
  * 两条路径最后都落到同一个 openLooseFile，跟「打开单篇」「拖一个 .md 进来」是同一套逻辑，不重开一份。
  */
 async function setupOsFileOpen(): Promise<boolean> {
-  const openPath = (path: string) => void openLooseFile(fileHandleFromPath(path));
+  const openPath = async (path: string) => {
+    await openLooseFile(fileHandleFromPath(path));
+    // 从外面双击进来的人，下一步就是想写字。
+    // Rust 那边的 bring_to_front 只负责把窗口提到前台——窗口有焦点不等于正文有光标，
+    // 全仓此前没有一处 focus 过编辑器，所以一直得先点一下正文才能打字。
+    editor.focus();
+  };
 
-  await listen<string>("open-file", (event) => openPath(event.payload));
+  await listen<string>("open-file", (event) => void openPath(event.payload));
 
   const pending = await invoke<string | null>("take_pending_file");
   if (!pending) return false;
   // 这一次要等它开完：boot 得据此决定还要不要恢复「上次那篇」
-  await openLooseFile(fileHandleFromPath(pending));
+  await openPath(pending);
   return true;
 }
 
