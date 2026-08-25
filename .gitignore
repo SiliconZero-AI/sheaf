@@ -33,6 +33,8 @@ docs/COMPARE.md
 docs/STORY.md
 ROADMAP.md
 CLAUDE.md
+# AGENTS.md 是 CLAUDE.md 的指针，CLAUDE.md 既然不公开，指针也不能进公开仓库
+AGENTS.md
 
 # 官网源码/文案已拆到独立私有仓库 sheaf-site，跟这个仓库的开源边界不同
 site/

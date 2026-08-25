@@ -87,8 +87,13 @@ jobs:
           $installer = Get-ChildItem "$dir/*-setup.exe" | Select-Object -First 1
           if ($null -eq $installer) { throw "NSIS installer was not found" }
           $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          # 再复制一份不带版本号的：官网的下载按钮指向
+          # /releases/latest/download/Sheaf-Setup-x64.exe，那个链接永远跟着最新 Release 走，
+          # 前提是每个 Release 里都有这个固定名字的文件。漏传一次，官网按钮就 404。
+          $stable = Join-Path $dir "Sheaf-Setup-x64.exe"
+          Copy-Item $installer.FullName $stable -Force
           $notes = Get-Content .github/RELEASE_NOTES_TEMPLATE.md -Raw
           $notes = $notes.Replace('{{INSTALLER}}', $installer.Name).Replace('{{SHA256}}', $hash)
           Set-Content -Path release-notes.md -Value $notes -Encoding utf8
-          gh release create "${{ github.ref_name }}" "$($installer.FullName)" "$dir/SHA256SUMS.txt" --title "Sheaf ${{ github.ref_name }}" --notes-file release-notes.md --draft
+          gh release create "${{ github.ref_name }}" "$($installer.FullName)" "$stable" "$dir/SHA256SUMS.txt" --title "Sheaf ${{ github.ref_name }}" --notes-file release-notes.md --draft
           Write-Output "Draft release ${{ github.ref_name }} created. Review it on GitHub, then click Publish release."
