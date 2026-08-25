@@ -16,6 +16,7 @@ import { setupLang } from "./lang";
 import type Vditor from "vditor";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   ensurePermission,
   findFile,
@@ -968,7 +969,22 @@ async function boot(): Promise<void> {
     // 启动时不能弹授权框（不是用户手势），拿不到权限就把「继续上次」露出来等他点
     await restoreSpaces(handles, false);
   }
-  if (isDesktop) await setupOsFileOpen();
+  if (isDesktop) {
+    await setupOsFileOpen();
+    await setupNativeFocus();
+  }
+}
+
+/**
+ * 桌面壳里必须用 Tauri 的原生窗口焦点事件，不能只靠网页的 window focus。
+ * 实测（2026-08-24 真机）：只是点任务栏/标题栏切回 Sheaf 时，WebView2 的内容区
+ * 并没有拿到键盘焦点，网页那个 focus 根本不发——非得点进正文才发。
+ * 而「从 AI 那边切回来先看一眼」恰恰是这个功能要服务的主场景，漏掉就等于没做。
+ */
+async function setupNativeFocus(): Promise<void> {
+  await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+    if (focused) void guardedCheck();
+  });
 }
 
 /**
