@@ -37,3 +37,9 @@ CLAUDE.md
 # 官网源码/文案已拆到独立私有仓库 sheaf-site，跟这个仓库的开源边界不同
 site/
 docs/SITE-COPY.md
+
+# 设计稿工作文件：跟 docs/BLUEPRINT.md 等内部文档同一档，不随仓库公开。
+# sheaf-conflict-dialog.html 是画布程序本身（2 MB+），更不该进版本库。
+*.dc.html
+canvas.json
+sheaf-conflict-dialog.html

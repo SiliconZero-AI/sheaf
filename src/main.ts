@@ -92,7 +92,11 @@ const dom = {
   helpPanel: need<HTMLDivElement>("#help-panel"),
   helpClose: need<HTMLButtonElement>("#help-close"),
   conflictMask: need<HTMLDivElement>("#conflict-mask"),
-  conflictBody: need<HTMLParagraphElement>("#conflict-body"),
+  conflictFile: need<HTMLElement>("#conflict-file"),
+  conflictMineMeta: need<HTMLSpanElement>("#conflict-mine-meta"),
+  conflictMineHead: need<HTMLSpanElement>("#conflict-mine-head"),
+  conflictDiskMeta: need<HTMLSpanElement>("#conflict-disk-meta"),
+  conflictDiskHead: need<HTMLSpanElement>("#conflict-disk-head"),
   conflictClose: need<HTMLButtonElement>("#conflict-close"),
   conflictKeepMine: need<HTMLButtonElement>("#conflict-keep-mine"),
   conflictKeepDisk: need<HTMLButtonElement>("#conflict-keep-disk"),
@@ -160,6 +164,8 @@ let saveChain: Promise<boolean> = Promise.resolve(true);
 let openChain: Promise<void> = Promise.resolve();
 /** 图片落不了盘的提示只弹一次，别每两秒刷一遍 */
 let warnedStuck = false;
+/** 用户最后一次动笔的时刻，冲突对话框拿它跟磁盘的修改时间并排比 */
+let lastEditAt: Date | null = null;
 
 /** true 后才允许挂容器级监听——recreateValue 有值代表这是语言切换触发的重建，不是第一次挂载 */
 let containerListenersAttached = false;
@@ -326,6 +332,8 @@ function refreshMeta(): void {
 }
 
 function markDirty(): void {
+  // 时刻每次都刷：对话框要显示「你最后一次动笔是几点」，不是「什么时候开始变脏的」
+  lastEditAt = new Date();
   if (state.dirty) return;
   state.dirty = true;
   renderStatus();
@@ -386,7 +394,7 @@ async function doSave(): Promise<boolean> {
     // 这时候写下去就是把别人的改动整个盖掉——停手，交给用户决定留哪份。
     if (stampChanged(state.stamp, await readStamp(state.file))) {
       blocked = true;
-      enterConflict();
+      await enterConflict();
       return false;
     }
     const payload = images.dehydrate(value);
@@ -455,16 +463,79 @@ async function reloadFromDisk(): Promise<boolean> {
   }
 }
 
-function enterConflict(): void {
+/**
+ * 两份各自的门面：字数、时间、开头一行。
+ * 光说「两份不一样」等于让用户盲选——他多半不记得自己改过什么，
+ * 更不知道外面写进去了多少。这三样是他唯一能拿来判断的依据。
+ */
+interface ConflictFacts {
+  mineChars: number;
+  mineTime: Date | null;
+  mineHead: string;
+  diskChars: number | null;
+  diskTime: Date | null;
+  diskHead: string;
+}
+
+let facts: ConflictFacts | null = null;
+
+/** 取正文第一行有字的内容做门面，标题的 # 去掉——用户认的是那句话，不是语法 */
+function headline(text: string): string {
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(/^\s*#{1,6}\s*/, "").replace(/^\s*>\s*/, "").trim();
+    if (line) return line;
+  }
+  return "";
+}
+
+function clock(at: Date | null): string {
+  return at ? `${two(at.getHours())}:${two(at.getMinutes())}` : t().conflict.unknownTime;
+}
+
+async function enterConflict(): Promise<void> {
   state.conflict = true;
   window.clearTimeout(saveTimer);
   renderStatus();
+  const mine = editor.getValue();
+  facts = {
+    mineChars: countChars(mine),
+    mineTime: lastEditAt,
+    mineHead: headline(mine),
+    diskChars: null,
+    diskTime: null,
+    diskHead: "",
+  };
+  // 多读一次磁盘只发生在冲突这一刻，不在自动保存的热路径上；
+  // 读不出来也照样把框弹出来，缺的那半边显示占位，绝不能因此把决定卡住
+  const handle = state.file;
+  try {
+    if (!handle) throw new Error("no file");
+    const disk = await readText(handle);
+    facts.diskChars = countChars(disk.text);
+    facts.diskHead = headline(disk.text);
+  } catch (error) {
+    console.error("[Sheaf] 读磁盘版本失败", error);
+  }
+  const stamp = await readStamp(state.file);
+  facts.diskTime = stamp.mtime > 0 ? new Date(stamp.mtime) : null;
   showConflict();
 }
 
-/** 正文带文件名，是唯一拼出来的一句，静态 data-i18n 覆盖不到，切语言时要单独重刷 */
+/** 拼出来的那几句静态 data-i18n 覆盖不到，切语言时要单独重刷 */
 function renderConflictBody(): void {
-  dom.conflictBody.textContent = t().conflict.body(state.name || t().status.noFile);
+  const dict = t().conflict;
+  dom.conflictFile.textContent = state.name || t().status.noFile;
+  if (!facts) return;
+  dom.conflictMineMeta.textContent = dict.mineMeta(
+    facts.mineChars.toLocaleString(),
+    clock(facts.mineTime),
+  );
+  dom.conflictMineHead.textContent = facts.mineHead || dict.emptyHead;
+  dom.conflictDiskMeta.textContent = dict.diskMeta(
+    facts.diskChars === null ? "—" : facts.diskChars.toLocaleString(),
+    clock(facts.diskTime),
+  );
+  dom.conflictDiskHead.textContent = facts.diskHead || dict.emptyHead;
 }
 
 function showConflict(): void {
@@ -509,7 +580,7 @@ async function checkExternalChange(): Promise<void> {
   const disk = await readStamp(state.file);
   if (!stampChanged(state.stamp, disk)) return;
   if (state.dirty) {
-    enterConflict();
+    await enterConflict();
     return;
   }
   if (await reloadFromDisk()) editor.tip(t().conflict.reloaded, 3000);
@@ -712,6 +783,8 @@ function setDoc(
   // 换了一篇就是一个全新的对照基准，上一篇没解决的冲突不能跟着传过来
   state.stamp = stamp;
   state.conflict = false;
+  lastEditAt = null;
+  facts = null;
   hideConflict();
   // 存不回去的编码就不让改：改了也保存不了，不如从一开始就说清楚
   if (state.writable) editor.enable();

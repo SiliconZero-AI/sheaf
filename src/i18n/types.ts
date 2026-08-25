@@ -107,12 +107,19 @@ export interface Dict {
   };
   conflict: {
     title: string;
-    body: (name: string) => string;
+    /** 文件名单独走 <code>，所以这里只有后半句 */
+    bodyTail: string;
     frozen: string;
-    keepMine: string;
-    keepMineHint: string;
-    keepDisk: string;
-    keepDiskHint: string;
+    mineLabel: string;
+    mineWhat: string;
+    diskLabel: string;
+    diskWhat: string;
+    /** 「1 066 字 · 21:27 你改的」——字数和时间就是选择的依据 */
+    mineMeta: (chars: string, time: string) => string;
+    diskMeta: (chars: string, time: string) => string;
+    /** 时间戳读不出来时的占位 */
+    unknownTime: string;
+    emptyHead: string;
     later: string;
     closeTitle: string;
     reloaded: string;

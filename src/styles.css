@@ -1413,8 +1413,8 @@ body {
 }
 
 .conflict-box {
-  width: min(460px, 100%);
-  padding: 16px 18px 14px;
+  width: min(560px, 100%);
+  padding: 18px 20px 14px;
   background: var(--float);
   border-radius: 14px;
   box-shadow: var(--shadow-lg);
@@ -1422,45 +1422,66 @@ body {
 
 .conflict-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font: 600 15px/1.4 var(--font-ui);
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.conflict-mark {
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+}
+
+.conflict-head-text {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.conflict-head-text b {
+  font: 600 15px/1.35 var(--font-ui);
   color: var(--ink);
 }
 
 .conflict-body {
-  margin: 10px 0 0;
+  margin: 3px 0 0;
   font: 400 13px/1.6 var(--font-ui);
   color: var(--ink-2);
 }
 
-.conflict-frozen {
-  margin: 8px 0 0;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--accent-soft);
-  font: 400 12px/1.5 var(--font-ui);
-  color: var(--ink-2);
+.conflict-body code {
+  font: 500 12.5px/1 ui-monospace, SFMono-Regular, Consolas, "Cascadia Code", monospace;
+  background: var(--code-bg);
+  border-radius: 4px;
+  padding: 2px 5px;
+  margin-right: 3px;
 }
 
+/* 两份并排：这个框最该解决的不是好不好看，是别让人盲选 */
 .conflict-choices {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
 }
 
 .conflict-choice {
+  appearance: none;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 13px 14px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 11px;
   background: var(--surface);
   text-align: left;
   cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+/* 画布这份带一圈淡色描边：不是「推荐」，只是标出「你人在这一边」 */
+.conflict-choice.is-mine {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent-soft);
 }
 
 .conflict-choice:hover {
@@ -1468,26 +1489,96 @@ body {
   background: var(--hover);
 }
 
-.conflict-choice b {
-  font: 600 13px/1.4 var(--font-ui);
-  color: var(--ink);
+.cc-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
 }
 
-.conflict-choice span {
-  font: 400 12px/1.5 var(--font-ui);
+.cc-head .wd-line-icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   color: var(--mute);
+}
+
+.conflict-choice.is-mine .cc-head .wd-line-icon {
+  color: var(--accent-strong);
+}
+
+.cc-head b {
+  font: 600 13px/1.3 var(--font-ui);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 字数和时间用等宽数字，两张卡片的数字才对得齐 */
+.cc-meta {
+  font: 400 11.5px/1.5 var(--font-ui);
+  color: var(--mute);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 各自的开头一行——只有把内容摆出来，这个选择才不是猜 */
+.cc-head-line {
+  font: 400 11.5px/1.5 ui-monospace, SFMono-Regular, Consolas, "Cascadia Code", monospace;
+  color: var(--ink-2);
+  background: var(--code-bg);
+  border-radius: 6px;
+  padding: 6px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cc-what {
+  font: 400 11.5px/1.5 var(--font-ui);
+  color: var(--mute);
+}
+
+.conflict-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid var(--line);
+}
+
+/* 「你的改动不会丢」是安抚话，优先级最低，不该比要做的决定还显眼 */
+.conflict-frozen {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 400 11.5px/1.4 var(--font-ui);
+  color: var(--mute);
+}
+
+.conflict-frozen .wd-line-icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .conflict-later {
-  display: block;
-  width: 100%;
-  margin-top: 10px;
-  padding: 6px;
+  appearance: none;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
-  font: 400 12px/1.5 var(--font-ui);
+  padding: 5px 7px;
+  font: 400 12px/1 var(--font-ui);
   color: var(--mute);
+  white-space: nowrap;
   cursor: pointer;
 }
 
