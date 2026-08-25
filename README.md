@@ -17,6 +17,7 @@ Tested from start to finish with real writing. Packaged as a Windows installer (
 - 🔍 **Real search**: `Ctrl+F` to find within a draft, `Ctrl+Shift+F` to search across every open folder, an always-on outline in the right pane
 - 🎨 **Full syntax support**: `==highlight==`, superscript/subscript, footnotes, task lists, tables, Mermaid, an emoji picker — the common ones have toolbar buttons, no syntax to memorize
 - 💾 **Autosave + three export formats**: writes to disk two seconds after you stop typing; export as plain `.md`, `.html`, or print to PDF
+- 🔀 **Safe alongside other tools**: edit a file outside Sheaf — in an AI tool, another editor, a sync folder — and Sheaf picks up the change when you switch back instead of overwriting it. If you have unsaved edits too, autosave pauses and shows both versions side by side with their length and timestamps so you can choose
 - 🌗 **Light/dark themes**: follows the system by default, lock it from the top bar
 - 🌐 **Bilingual interface**: switch between Chinese and English instantly, no reload
 - 🪟 **Windows installer**: double-click to install, launch from the Start menu, zero external requests so it works offline, associates `.md` files (double-click one to open it directly in Sheaf), remembers your folders and last-open draft when you relaunch
