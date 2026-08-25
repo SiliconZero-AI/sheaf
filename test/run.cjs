@@ -41,4 +41,8 @@ fs.writeFileSync(path.join(outDir, "package.json"), '{ "type": "commonjs" }\n');
 // stamp 在前：它是同步的，跑完就回来；images.test.cjs 末尾会 process.exit，排它后面就跑不到了
 require("./stamp.test.cjs");
 console.log("");
+require("./last-file.test.cjs");
+console.log("");
+require("./inside-space.test.cjs");
+console.log("");
 require("./images.test.cjs");

@@ -303,21 +303,83 @@ export async function recallRoots(): Promise<DirHandle[]> {
   return single ? [single] : [];
 }
 
-/** 上次打开的那篇：记在第几个工作区里、相对该工作区的路径 */
-export interface LastFile {
-  index: number;
-  path: string;
-}
+/**
+ * 上次打开的那篇。有两种，靠 kind 分：
+ * - space：属于某个工作区的一篇，记「第几个工作区」+ 相对该工作区的路径
+ * - loose：不属于任何工作区的散篇（顶栏「打开单篇」、拖进来、双击 .md），记绝对路径
+ *
+ * 散篇为什么只能记绝对路径：它没有工作区可挂靠，index 无从谈起。
+ * 也因此只有桌面壳存得住——浏览器句柄关掉标签页授权就失效，记了也开不回来。
+ */
+export type LastFile =
+  | { kind: "space"; index: number; path: string }
+  | { kind: "loose"; path: string };
 
 export function rememberLastFile(last: LastFile): Promise<void> {
   return idbSet(LAST_FILE_KEY, last);
 }
 
+/**
+ * 把 IndexedDB 里存着的东西认成 LastFile。单独拆出来是为了能测——
+ * 真正容易出错的是「认不认得老格式」，而那跟 IndexedDB 无关。
+ *
+ * 两种老格式都得认，否则老用户升上来会发现「上次那篇」没了：
+ * 最早只存一个路径字符串；后来是没有 kind 字段的 { index, path }。
+ * 认不出来一律给 null——回到欢迎页，总好过拿一个半残的记录去开文件。
+ */
+export function parseLastFile(value: unknown): LastFile | null {
+  if (typeof value === "string") return value ? { kind: "space", index: 0, path: value } : null;
+  if (!value || typeof value !== "object") return null;
+  const raw = value as { kind?: unknown; index?: unknown; path?: unknown };
+  if (typeof raw.path !== "string" || raw.path === "") return null;
+  if (raw.kind === "loose") return { kind: "loose", path: raw.path };
+  return { kind: "space", index: typeof raw.index === "number" ? raw.index : 0, path: raw.path };
+}
+
 export async function recallLastFile(): Promise<LastFile | null> {
-  const value = await idbGet<LastFile | string>(LAST_FILE_KEY);
-  // 旧格式只存了一个路径字符串
-  if (typeof value === "string") return value ? { index: 0, path: value } : null;
-  return value ?? null;
+  return parseLastFile(await idbGet<unknown>(LAST_FILE_KEY));
+}
+
+/**
+ * 这个散篇句柄记得住吗——记得住就返回它的绝对路径。
+ * 只有桌面壳造的句柄有路径；浏览器句柄返回 null，调用方据此跳过记忆。
+ */
+export function loosePathOf(handle: FileHandle): string | null {
+  return handle instanceof DiskFile ? handle.path : null;
+}
+
+/**
+ * 恢复散篇用：路径还指着一个真文件，才给句柄。
+ * 文件被删了、挪走了、在拔掉的移动硬盘上，就当没记过——
+ * 启动时甩一句「打开失败」，用户既修不了也不想看。
+ */
+export async function fileHandleIfExists(path: string): Promise<FileHandle | null> {
+  if (!isDesktop) return null;
+  try {
+    return (await exists(path)) ? new DiskFile(path, baseName(path)) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `abs` 落在 `root` 里面就返回相对路径，否则 null。用来判断一个绝对路径
+ * 到底是「某个工作区里的一篇」还是真散篇——判错的后果不是不高亮那么轻：
+ * 误判成散篇，spaceId 和相对路径都会留空，那篇里所有相对路径的图会全变裂图。
+ *
+ * 两种分隔符都得认（系统对话框和双击给回来的是反斜杠，扫树时拼的是正斜杠）；
+ * Windows 盘符和目录名不区分大小写，所以只拿小写去比，**返回的仍是原样大小写**
+ * 的相对路径——findFile 要拿它跟扫树时记下的 path 逐字比对。
+ *
+ * 必须卡在分隔符上：`D:/note` 不能把 `D:/notebook/a.md` 认成自己的。
+ */
+export function relativePathInside(root: string, abs: string): string | null {
+  const r = root.replace(/\\/g, "/").replace(/\/+$/, "");
+  const f = abs.replace(/\\/g, "/");
+  if (r === "") return null;
+  if (!f.toLowerCase().startsWith(`${r.toLowerCase()}/`)) return null;
+  const rel = f.slice(r.length + 1);
+  return rel === "" ? null : rel;
 }
 
 /**

@@ -36,3 +36,6 @@ interface Window {
 interface DataTransferItem {
   getAsFileSystemHandle?(): Promise<FileSystemHandle | null>;
 }
+
+// vite.config.ts 的 define 在编译期塞进来的版本号，源头是 package.json
+declare const __APP_VERSION__: string;

@@ -38,6 +38,9 @@ import {
   pickFile as chooseFile,
   saveAs,
   fileHandleFromPath,
+  fileHandleIfExists,
+  relativePathInside,
+  loosePathOf,
   readStamp,
   stampChanged,
   UNKNOWN_STAMP,
@@ -91,6 +94,7 @@ const dom = {
   helpBtn: need<HTMLButtonElement>("#btn-help"),
   helpPanel: need<HTMLDivElement>("#help-panel"),
   helpClose: need<HTMLButtonElement>("#help-close"),
+  helpVersion: need<HTMLSpanElement>("#help-version"),
   conflictMask: need<HTMLDivElement>("#conflict-mask"),
   conflictFile: need<HTMLElement>("#conflict-file"),
   conflictMineMeta: need<HTMLSpanElement>("#conflict-mine-meta"),
@@ -273,7 +277,11 @@ const search = new Search(
 const tableToolbar = new TableToolbar(dom.canvas, () =>
   dom.editor.querySelector<HTMLElement>(".vditor-ir .vditor-reset"),
 );
-const help = new HelpPanel({ panel: dom.helpPanel, close: dom.helpClose });
+const help = new HelpPanel({
+  panel: dom.helpPanel,
+  close: dom.helpClose,
+  version: dom.helpVersion,
+});
 
 // ---------- 状态栏 ----------
 
@@ -828,7 +836,7 @@ async function doOpenFile(spaceId: string, node: FileNode): Promise<void> {
     editor.setValue(hydrated, true);
     tree.setActive(spaceId, node.path);
     const index = state.spaces.findIndex((item) => item.id === spaceId);
-    if (index >= 0) await rememberLastFile({ index, path: node.path });
+    if (index >= 0) await rememberLastFile({ kind: "space", index, path: node.path });
   } catch (error) {
     console.error("[Sheaf] 打开失败", error);
     editor.tip(t().tip.openFailed, 3000);
@@ -894,11 +902,37 @@ async function pickDirectory(): Promise<void> {
 }
 
 /**
+ * 一个绝对路径落在哪个已挂载的工作区里。找不到就是真散篇。
+ * 只有桌面壳的工作区句柄带 path，浏览器句柄没有，所以浏览器下这里一律返回 null。
+ */
+function locateInSpaces(abs: string): { spaceId: string; node: FileNode } | null {
+  for (const space of state.spaces) {
+    const root = space.handle.path;
+    if (!root) continue;
+    const rel = relativePathInside(root, abs);
+    if (!rel) continue;
+    const node = findFile(space.tree, rel);
+    if (node) return { spaceId: space.id, node };
+  }
+  return null;
+}
+
+/**
  * 打开一篇不属于任何工作区的稿子（顶栏「打开单篇」，或直接拖一个 .md 进来）。
  * 单开、选择器、拖拽三条路都走这里——之前每条路各写一遍，
  * 8 月 15 号就是在其中一条上漏了编码保护和 images.reset() 的时序，丢过稿。
  */
 async function openLooseFile(handle: FileHandle): Promise<void> {
+  // 这一篇可能其实就躺在某个已挂载的工作区里——双击、拖拽、单开三条路都可能撞上。
+  // 撞上了就得按「工作区里的那篇」开：左栏才会高亮，图片才按相对路径找得到，
+  // 记忆也才会记成工作区那种。留在散篇这条路上 spaceId / path 是空的，
+  // 那篇里所有相对路径的图会全变裂图——这条比不高亮严重得多。
+  const abs = loosePathOf(handle);
+  const inSpace = abs ? locateInSpaces(abs) : null;
+  if (inSpace) {
+    await openFile(inSpace.spaceId, inSpace.node);
+    return;
+  }
   if (state.dirty && state.file && !(await save())) {
     editor.tip(t().tip.unsavedBeforeOpen, 5000);
     return;
@@ -914,6 +948,10 @@ async function openLooseFile(handle: FileHandle): Promise<void> {
     setDoc(handle, "", "", file.name, loaded, stamp);
     editor.setValue(loaded.text, true);
     tree.setActive(null, null);
+    // 记住这一篇，下次开 Sheaf 回到它。拿不到绝对路径（浏览器句柄）就不记——
+    // 记了也开不回来，反而会把工作区里那篇正常的记忆顶掉
+    const loosePath = loosePathOf(handle);
+    if (loosePath) await rememberLastFile({ kind: "loose", path: loosePath });
   } catch (error) {
     console.error("[Sheaf] 打开失败", error);
     editor.tip(t().tip.openFailed, 3000);
@@ -1042,10 +1080,43 @@ async function boot(): Promise<void> {
     // 启动时不能弹授权框（不是用户手势），拿不到权限就把「继续上次」露出来等他点
     await restoreSpaces(handles, false);
   }
-  if (isDesktop) {
-    await setupOsFileOpen();
-    await setupNativeFocus();
+  // 双击 .md 冷启动进来的那一篇优先于「上次那篇」：它是用户此刻的明确意图。
+  // 排在恢复之前领走，否则会先渲染一篇没人要的稿子再被顶掉，画面闪一下
+  const openedByOs = isDesktop ? await setupOsFileOpen() : false;
+  const last = await recallLastFile();
+  // 散篇不挂在任何工作区上，restoreSpaces 恢复不到它，得单独开一次
+  if (!openedByOs && last?.kind === "loose") {
+    const handle = await fileHandleIfExists(last.path);
+    // 文件已经被删了 / 挪走了 / 在拔掉的移动硬盘上，就当没记过。
+    // 启动时甩一句「打开失败」，用户既修不了也不想看
+    if (handle) await openLooseFile(handle);
   }
+  if (isDesktop) await setupNativeFocus();
+}
+
+/**
+ * 聚焦编辑器，并把光标摆到正文末尾。
+ *
+ * 落点为什么必须是末尾、不能是开头：我们在「从外面双击进来」这条路上会主动聚焦，
+ * 而 Vditor 的 focus() 落点是文档开头——那位置通常正好压在标题的第一个字前面。
+ * 用户不看就敲一个字，改的是标题，两秒后自动保存直接落盘。
+ * 末尾是唯一「敲下去只会追加、不会动到已有内容」的落点。
+ *
+ * Vditor 没有「聚焦到末尾」的 API（只有 focus()），所以自己用 Selection 摆。
+ */
+function focusEditorEnd(): void {
+  editor.focus();
+  const reset = dom.editor.querySelector<HTMLElement>(".vditor-ir .vditor-reset");
+  if (!reset) return;
+  const range = document.createRange();
+  range.selectNodeContents(reset);
+  // false = 折叠到末端
+  range.collapse(false);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  // 程序设的 selection 浏览器不保证滚进视野，长文里光标会停在屏幕外
+  reset.lastElementChild?.scrollIntoView({ block: "end" });
 }
 
 /**
@@ -1066,13 +1137,22 @@ async function setupNativeFocus(): Promise<void> {
  * 操作系统其实是想再启一个进程——Rust 那边的 single-instance 插件拦住它，转成 open-file 事件转发过来。
  * 两条路径最后都落到同一个 openLooseFile，跟「打开单篇」「拖一个 .md 进来」是同一套逻辑，不重开一份。
  */
-async function setupOsFileOpen(): Promise<void> {
-  const openPath = (path: string) => void openLooseFile(fileHandleFromPath(path));
+async function setupOsFileOpen(): Promise<boolean> {
+  const openPath = async (path: string) => {
+    await openLooseFile(fileHandleFromPath(path));
+    // 从外面双击进来的人，下一步就是想写字。
+    // Rust 那边的 bring_to_front 只负责把窗口提到前台——窗口有焦点不等于正文有光标，
+    // 全仓此前没有一处 focus 过编辑器，所以一直得先点一下正文才能打字。
+    focusEditorEnd();
+  };
 
-  await listen<string>("open-file", (event) => openPath(event.payload));
+  await listen<string>("open-file", (event) => void openPath(event.payload));
 
   const pending = await invoke<string | null>("take_pending_file");
-  if (pending) openPath(pending);
+  if (!pending) return false;
+  // 这一次要等它开完：boot 得据此决定还要不要恢复「上次那篇」
+  await openPath(pending);
+  return true;
 }
 
 /**
@@ -1114,6 +1194,10 @@ async function restoreSpaces(
   if (broken > 0) {
     editor.tip(t().tip.restoreBroken(broken), 7000);
   }
+
+  // 上次开的是散篇的话，这里就别抢着开工作区里的第一篇：一来会闪一下再被 boot 顶掉，
+  // 二来 doOpenFile 会顺手把「上次那篇」的记忆改写成工作区那篇，散篇就再也回不来了
+  if (last?.kind === "loose") return;
 
   const target = (last && bySource.get(last.index)) || state.spaces[0];
   if (!target || state.dirty) return;
