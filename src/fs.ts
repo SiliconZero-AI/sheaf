@@ -29,6 +29,11 @@ export interface FileHandle {
    */
   isSameEntry?(other: any): Promise<boolean>;
   getFile(): Promise<File>;
+  /**
+   * 磁盘现状（见文件末尾的 DiskStamp）。桌面端实现成只 stat 不读内容；
+   * 浏览器句柄没有这个方法，readStamp() 会退回 getFile() 拿元数据。
+   */
+  stamp?(): Promise<DiskStamp>;
   createWritable(): Promise<{
     write(data: string | Blob | BufferSource): Promise<void>;
     close(): Promise<void>;
@@ -83,6 +88,12 @@ class DiskFile implements FileHandle {
       // 拿不到修改时间不影响读内容，只是搜索缓存会多重读一次
     }
     return new File([bytes as BlobPart], this.name, { lastModified });
+  }
+
+  /** 只问元数据，不读内容——自动保存前每次都要问一遍，不能顺带把整篇读进来 */
+  async stamp(): Promise<DiskStamp> {
+    const info = await stat(this.path);
+    return { mtime: info.mtime ? info.mtime.getTime() : 0, size: info.size ?? -1 };
   }
 
   async createWritable() {
@@ -550,4 +561,54 @@ export async function uniqueName(
     candidate = `${stem}-${i}${ext}`;
   }
   return `${stem}-${Date.now()}${ext}`;
+}
+
+// ---------- 外部改动识别 ----------
+//
+// 「Sheaf 开着旧内容 → 外部把文件改了 → 自动保存把外部改动整个盖掉」是丢稿级路径。
+// 堵它需要一个能回答「磁盘上这篇还是不是我们上次看到的那份」的凭据。
+// 用 mtime + 字节数两个维度：mtime 是主信号，size 兜住「同一毫秒内改完、时间戳撞上」的漏网。
+
+export interface DiskStamp {
+  /** 最后修改时间（毫秒）。0 = 拿不到 */
+  mtime: number;
+  /** 字节数。-1 = 拿不到 */
+  size: number;
+}
+
+/** 读不出磁盘状态时用它，语义是「无从判断」，不是「没变过」 */
+export const UNKNOWN_STAMP: DiskStamp = { mtime: 0, size: -1 };
+
+function isUnknown(stamp: DiskStamp): boolean {
+  return stamp.mtime === 0 && stamp.size < 0;
+}
+
+/**
+ * 磁盘上这篇是不是已经不是我们上次看到的那一份。
+ *
+ * mtime 用不等号而不是大于号：外部工具完全可能写回一个更旧的时间戳
+ * （从备份还原、同步盘拉回旧版都是这样），那同样是「不是我们那份」。
+ *
+ * 任一侧读不出来就一律当没变——宁可漏报一次，也不能因为拿不到时间戳
+ * 就让用户从此存不了盘。存不了盘比盖掉外部改动更糟。
+ */
+export function stampChanged(recorded: DiskStamp, disk: DiskStamp): boolean {
+  if (isUnknown(recorded) || isUnknown(disk)) return false;
+  return recorded.mtime !== disk.mtime || recorded.size !== disk.size;
+}
+
+/**
+ * 取磁盘现状。桌面端走 stat，不读文件内容；
+ * 浏览器端 getFile() 只拿元数据，同样不读内容，两边都便宜。
+ */
+export async function readStamp(handle: FileHandle | null): Promise<DiskStamp> {
+  if (!handle) return UNKNOWN_STAMP;
+  try {
+    if (handle.stamp) return await handle.stamp();
+    const file = await handle.getFile();
+    return { mtime: file.lastModified, size: file.size };
+  } catch {
+    // 文件被删掉、权限没了都会走到这里。当作无从判断，由上层各自处理
+    return UNKNOWN_STAMP;
+  }
 }

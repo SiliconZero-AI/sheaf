@@ -16,6 +16,7 @@ import { setupLang } from "./lang";
 import type Vditor from "vditor";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   ensurePermission,
   findFile,
@@ -37,6 +38,10 @@ import {
   pickFile as chooseFile,
   saveAs,
   fileHandleFromPath,
+  readStamp,
+  stampChanged,
+  UNKNOWN_STAMP,
+  type DiskStamp,
   type DirHandle,
   type FileHandle,
 } from "./fs";
@@ -86,6 +91,16 @@ const dom = {
   helpBtn: need<HTMLButtonElement>("#btn-help"),
   helpPanel: need<HTMLDivElement>("#help-panel"),
   helpClose: need<HTMLButtonElement>("#help-close"),
+  conflictMask: need<HTMLDivElement>("#conflict-mask"),
+  conflictFile: need<HTMLElement>("#conflict-file"),
+  conflictMineMeta: need<HTMLSpanElement>("#conflict-mine-meta"),
+  conflictMineHead: need<HTMLSpanElement>("#conflict-mine-head"),
+  conflictDiskMeta: need<HTMLSpanElement>("#conflict-disk-meta"),
+  conflictDiskHead: need<HTMLSpanElement>("#conflict-disk-head"),
+  conflictClose: need<HTMLButtonElement>("#conflict-close"),
+  conflictKeepMine: need<HTMLButtonElement>("#conflict-keep-mine"),
+  conflictKeepDisk: need<HTMLButtonElement>("#conflict-keep-disk"),
+  conflictLater: need<HTMLButtonElement>("#conflict-later"),
 };
 
 // 首帧启动就把静态标记里的 data-i18n 系列属性填成当前语言；语言切换时 applyLanguage() 会再跑一遍
@@ -114,6 +129,10 @@ interface State {
   encoding: TextEncoding;
   /** false = 这篇不是 UTF-8，写回去会换掉编码，所以整篇只读 */
   writable: boolean;
+  /** 上次读到／写完这篇时磁盘上的样子。跟当下一比，就知道外面有没有人动过 */
+  stamp: DiskStamp;
+  /** 已认出外部改动、用户还没选留哪份。为 true 时一律不写盘 */
+  conflict: boolean;
 }
 
 const state: State = {
@@ -128,6 +147,8 @@ const state: State = {
   loading: false,
   encoding: "utf-8",
   writable: true,
+  stamp: UNKNOWN_STAMP,
+  conflict: false,
 };
 
 let nextSpaceId = 1;
@@ -143,6 +164,8 @@ let saveChain: Promise<boolean> = Promise.resolve(true);
 let openChain: Promise<void> = Promise.resolve();
 /** 图片落不了盘的提示只弹一次，别每两秒刷一遍 */
 let warnedStuck = false;
+/** 用户最后一次动笔的时刻，冲突对话框拿它跟磁盘的修改时间并排比 */
+let lastEditAt: Date | null = null;
 
 /** true 后才允许挂容器级监听——recreateValue 有值代表这是语言切换触发的重建，不是第一次挂载 */
 let containerListenersAttached = false;
@@ -267,6 +290,10 @@ function renderStatus(): void {
   if (!state.file) {
     dom.saveLabel.textContent = "";
     dom.saveLabel.dataset.tone = "idle";
+  } else if (state.conflict) {
+    // 排在只读/保存中之前：自动保存已经停了，这是此刻最要紧的状态
+    dom.saveLabel.textContent = t().status.conflict;
+    dom.saveLabel.dataset.tone = "conflict";
   } else if (!state.writable) {
     dom.saveLabel.textContent = t().status.readonly(encodingLabel(state.encoding));
     dom.saveLabel.dataset.tone = "dirty";
@@ -305,6 +332,8 @@ function refreshMeta(): void {
 }
 
 function markDirty(): void {
+  // 时刻每次都刷：对话框要显示「你最后一次动笔是几点」，不是「什么时候开始变脏的」
+  lastEditAt = new Date();
   if (state.dirty) return;
   state.dirty = true;
   renderStatus();
@@ -338,6 +367,8 @@ async function doSave(): Promise<boolean> {
   if (!ready || !state.file || state.loading) return !state.dirty;
   // 非 UTF-8 的稿子已经设成只读了，这里再兜一道：绝不把别人的编码换掉
   if (!state.writable) return true;
+  // 冲突没解决之前一个字都不许落盘，否则就是在盖掉外部改动——本函数存在的全部意义
+  if (state.conflict) return false;
   if (!state.dirty) return true;
   window.clearTimeout(saveTimer);
   state.saving = true;
@@ -359,9 +390,18 @@ async function doSave(): Promise<boolean> {
       }
       return false;
     }
+    // 安全闸：写之前先看一眼磁盘。跟我们上次见到的对不上，说明外面有人改过，
+    // 这时候写下去就是把别人的改动整个盖掉——停手，交给用户决定留哪份。
+    if (stampChanged(state.stamp, await readStamp(state.file))) {
+      blocked = true;
+      await enterConflict();
+      return false;
+    }
     const payload = images.dehydrate(value);
     // 原文件带 BOM 就把 BOM 写回去，别悄悄改掉文件的字节开头
     await writeFile(state.file, state.encoding === "utf-8-bom" ? `﻿${payload}` : payload);
+    // 立刻把基准换成我们自己刚写出来的样子，否则下一轮自动保存会把自己的写入当成外部改动
+    state.stamp = await readStamp(state.file);
     state.savedAt = new Date();
     // 写盘这一小会儿里用户可能又敲了字，不能一律把 dirty 抹掉，否则那几个字就没了
     state.dirty = editor.getValue() !== value;
@@ -378,6 +418,172 @@ async function doSave(): Promise<boolean> {
     // 落不了盘就别每两秒重试一次刷屏，等用户把文件夹打开
     if (!blocked && state.dirty) scheduleSave();
   }
+}
+
+// ---------- 外部改动 ----------
+//
+// 「Sheaf 开着 A → 外部（AI、别的编辑器、同步盘）把 A 改了」这件事有两条路要走：
+//   · 画布上没有未保存改动 → 直接换成磁盘那份，不打扰用户（②）
+//   · 画布上有未保存改动   → 两份都是真的，机器猜不出留哪份，停下来问（①）
+// 问的期间自动保存整个冻结，这是丢稿路径上最后一道闸。
+
+/** 把画布内容换成磁盘上的那份，并尽量把用户正在看的位置留在原地 */
+async function reloadFromDisk(): Promise<boolean> {
+  if (!state.file) return false;
+  const scroller = dom.editor.querySelector<HTMLElement>(".vditor-ir .vditor-reset");
+  const keepScroll = scroller?.scrollTop ?? 0;
+  state.loading = true;
+  try {
+    const loaded = await readText(state.file);
+    images.reset();
+    const space = state.spaces.find((item) => item.id === state.spaceId) ?? null;
+    const hydrated = await images.hydrate(loaded.text, space?.handle ?? null, state.path);
+    const stamp = await readStamp(state.file);
+    // 复用 setDoc 而不是零散赋值：它顺带清掉 dirty/conflict 并复位只读态，少一处漏改
+    setDoc(state.file, state.spaceId, state.path, state.name, loaded, stamp);
+    // 撤销栈必须清：这些内容不是用户敲出来的，留着撤销会把外部那份「撤」成旧内容
+    editor.setValue(hydrated, true);
+    // 换完内容再滚回去。setValue 是同步的，但 Vditor 的渲染排到下一帧，早了会被重置
+    if (scroller && keepScroll > 0) {
+      // 不自己夹上界：内容变短时浏览器会 clamp 到底部，比拿一个可能还没算完的
+      // scrollHeight 去算更稳
+      requestAnimationFrame(() => {
+        scroller.scrollTop = keepScroll;
+      });
+    }
+    return true;
+  } catch (error) {
+    console.error("[Sheaf] 重新读取失败", error);
+    editor.tip(t().conflict.reloadFailed, 5000);
+    return false;
+  } finally {
+    state.loading = false;
+    refreshMeta();
+    renderStatus();
+  }
+}
+
+/**
+ * 两份各自的门面：字数、时间、开头一行。
+ * 光说「两份不一样」等于让用户盲选——他多半不记得自己改过什么，
+ * 更不知道外面写进去了多少。这三样是他唯一能拿来判断的依据。
+ */
+interface ConflictFacts {
+  mineChars: number;
+  mineTime: Date | null;
+  mineHead: string;
+  diskChars: number | null;
+  diskTime: Date | null;
+  diskHead: string;
+}
+
+let facts: ConflictFacts | null = null;
+
+/** 取正文第一行有字的内容做门面，标题的 # 去掉——用户认的是那句话，不是语法 */
+function headline(text: string): string {
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(/^\s*#{1,6}\s*/, "").replace(/^\s*>\s*/, "").trim();
+    if (line) return line;
+  }
+  return "";
+}
+
+function clock(at: Date | null): string {
+  return at ? `${two(at.getHours())}:${two(at.getMinutes())}` : t().conflict.unknownTime;
+}
+
+async function enterConflict(): Promise<void> {
+  state.conflict = true;
+  window.clearTimeout(saveTimer);
+  renderStatus();
+  const mine = editor.getValue();
+  facts = {
+    mineChars: countChars(mine),
+    mineTime: lastEditAt,
+    mineHead: headline(mine),
+    diskChars: null,
+    diskTime: null,
+    diskHead: "",
+  };
+  // 多读一次磁盘只发生在冲突这一刻，不在自动保存的热路径上；
+  // 读不出来也照样把框弹出来，缺的那半边显示占位，绝不能因此把决定卡住
+  const handle = state.file;
+  try {
+    if (!handle) throw new Error("no file");
+    const disk = await readText(handle);
+    facts.diskChars = countChars(disk.text);
+    facts.diskHead = headline(disk.text);
+  } catch (error) {
+    console.error("[Sheaf] 读磁盘版本失败", error);
+  }
+  const stamp = await readStamp(state.file);
+  facts.diskTime = stamp.mtime > 0 ? new Date(stamp.mtime) : null;
+  showConflict();
+}
+
+/** 拼出来的那几句静态 data-i18n 覆盖不到，切语言时要单独重刷 */
+function renderConflictBody(): void {
+  const dict = t().conflict;
+  dom.conflictFile.textContent = state.name || t().status.noFile;
+  if (!facts) return;
+  dom.conflictMineMeta.textContent = dict.mineMeta(
+    facts.mineChars.toLocaleString(),
+    clock(facts.mineTime),
+  );
+  dom.conflictMineHead.textContent = facts.mineHead || dict.emptyHead;
+  dom.conflictDiskMeta.textContent = dict.diskMeta(
+    facts.diskChars === null ? "—" : facts.diskChars.toLocaleString(),
+    clock(facts.diskTime),
+  );
+  dom.conflictDiskHead.textContent = facts.diskHead || dict.emptyHead;
+}
+
+function showConflict(): void {
+  renderConflictBody();
+  dom.conflictMask.hidden = false;
+  dom.conflictKeepMine.focus();
+}
+
+function hideConflict(): void {
+  dom.conflictMask.hidden = true;
+}
+
+/** 留用户这份：把画布写回磁盘，盖掉外部改动。这是用户明说要的，不再拦 */
+async function resolveKeepMine(): Promise<void> {
+  hideConflict();
+  state.conflict = false;
+  // 认下磁盘现状当新基准，安全闸才不会立刻又拦一次
+  state.stamp = await readStamp(state.file);
+  state.dirty = true;
+  if (await save()) editor.tip(t().conflict.resolvedMine, 4000);
+  renderStatus();
+}
+
+/** 用磁盘那份：放弃画布上的改动 */
+async function resolveKeepDisk(): Promise<void> {
+  hideConflict();
+  state.conflict = false;
+  if (await reloadFromDisk()) editor.tip(t().conflict.resolvedDisk, 4000);
+  else {
+    // 读不回来就别假装解决了，冲突原样挂着，自动保存继续冻结
+    state.conflict = true;
+    renderStatus();
+  }
+}
+
+/**
+ * 回到 Sheaf 窗口时对一次表。没未保存改动就无声换掉，有就问。
+ * 保存中／加载中／已经在问了都跳过，避免自己跟自己打架。
+ */
+async function checkExternalChange(): Promise<void> {
+  if (!ready || !state.file || state.loading || state.saving || state.conflict) return;
+  const disk = await readStamp(state.file);
+  if (!stampChanged(state.stamp, disk)) return;
+  if (state.dirty) {
+    await enterConflict();
+    return;
+  }
+  if (await reloadFromDisk()) editor.tip(t().conflict.reloaded, 3000);
 }
 
 /** 稿件名去掉扩展名，给导出的文件用 */
@@ -564,6 +770,7 @@ function setDoc(
   path: string,
   name: string,
   loaded?: { encoding: TextEncoding; writable: boolean },
+  stamp: DiskStamp = UNKNOWN_STAMP,
 ): void {
   state.file = handle;
   state.spaceId = spaceId;
@@ -573,6 +780,12 @@ function setDoc(
   state.savedAt = null;
   state.encoding = loaded?.encoding ?? "utf-8";
   state.writable = loaded?.writable ?? true;
+  // 换了一篇就是一个全新的对照基准，上一篇没解决的冲突不能跟着传过来
+  state.stamp = stamp;
+  state.conflict = false;
+  lastEditAt = null;
+  facts = null;
+  hideConflict();
   // 存不回去的编码就不让改：改了也保存不了，不如从一开始就说清楚
   if (state.writable) editor.enable();
   else {
@@ -602,13 +815,16 @@ async function doOpenFile(spaceId: string, node: FileNode): Promise<void> {
   }
   state.loading = true;
   try {
+    // 先取 stamp 再读内容：万一读的这一瞬间文件正被改，stamp 会「偏旧」，
+    // 下次对表就多重载一次；反过来取会「偏新」，那是真的会漏掉外部改动
+    const stamp = await readStamp(node.handle);
     const loaded = await readText(node.handle);
     // 读成功之后才清旧映射：读失败时画布上还是上一篇，图不能提前撤成裂图
     images.reset();
     // 图片按这篇稿子所属的那个工作区来找，别拿错文件夹
     const space = state.spaces.find((item) => item.id === spaceId) ?? null;
     const hydrated = await images.hydrate(loaded.text, space?.handle ?? null, node.path);
-    setDoc(node.handle, spaceId, node.path, node.name, loaded);
+    setDoc(node.handle, spaceId, node.path, node.name, loaded, stamp);
     editor.setValue(hydrated, true);
     tree.setActive(spaceId, node.path);
     const index = state.spaces.findIndex((item) => item.id === spaceId);
@@ -689,12 +905,13 @@ async function openLooseFile(handle: FileHandle): Promise<void> {
   }
   state.loading = true;
   try {
+    const stamp = await readStamp(handle);
     const file = await handle.getFile();
     const loaded = await readTextFromFile(file);
     // 读成功之后才清旧映射，否则读失败时上一篇的图会全变裂图
     images.reset();
     // spaceId / path 都留空：这篇不在任何工作区里，图片没有可靠的落脚点
-    setDoc(handle, "", "", file.name, loaded);
+    setDoc(handle, "", "", file.name, loaded, stamp);
     editor.setValue(loaded.text, true);
     tree.setActive(null, null);
   } catch (error) {
@@ -825,7 +1042,22 @@ async function boot(): Promise<void> {
     // 启动时不能弹授权框（不是用户手势），拿不到权限就把「继续上次」露出来等他点
     await restoreSpaces(handles, false);
   }
-  if (isDesktop) await setupOsFileOpen();
+  if (isDesktop) {
+    await setupOsFileOpen();
+    await setupNativeFocus();
+  }
+}
+
+/**
+ * 桌面壳里必须用 Tauri 的原生窗口焦点事件，不能只靠网页的 window focus。
+ * 实测（2026-08-24 真机）：只是点任务栏/标题栏切回 Sheaf 时，WebView2 的内容区
+ * 并没有拿到键盘焦点，网页那个 focus 根本不发——非得点进正文才发。
+ * 而「从 AI 那边切回来先看一眼」恰恰是这个功能要服务的主场景，漏掉就等于没做。
+ */
+async function setupNativeFocus(): Promise<void> {
+  await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+    if (focused) void guardedCheck();
+  });
 }
 
 /**
@@ -965,6 +1197,7 @@ setupLang(dom.lang);
 onLangChange(() => {
   applyStaticI18n();
   renderStatus();
+  if (!dom.conflictMask.hidden) renderConflictBody();
   // 没打开真实文件时画布上还是欢迎文档的占位文字，切语言要跟着换成新语言的版本；
   // 有文件在编辑（含未保存改动）就必须原样保留，绝不能用新语言的模板文字覆盖用户内容
   const value = state.file ? editor.getValue() : t().welcome;
@@ -1079,7 +1312,10 @@ window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
   if (key === "s") {
     event.preventDefault();
-    if (state.file) void save();
+    // 冲突挂着时 save() 会一声不响地拒绝写盘。按了 Ctrl+S 什么都不发生
+    // 正是这个项目一直在躲的坑，所以直接把那个待决定的对话框叫回来
+    if (state.conflict) showConflict();
+    else if (state.file) void save();
     else downloadCurrent();
   } else if (key === "f") {
     event.preventDefault();
@@ -1103,6 +1339,34 @@ window.addEventListener("blur", () => {
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden" && state.dirty) void save();
+  else if (document.visibilityState === "visible") void guardedCheck();
+});
+
+// 回到 Sheaf 就对一次表。focus 与 visibilitychange 在不同平台上触发得不一样，
+// 两个都听、用一把锁挡住重入，比赌某一个一定会来可靠。
+let checking = false;
+async function guardedCheck(): Promise<void> {
+  if (checking) return;
+  checking = true;
+  try {
+    await checkExternalChange();
+  } finally {
+    checking = false;
+  }
+}
+
+window.addEventListener("focus", () => void guardedCheck());
+
+dom.conflictKeepMine.addEventListener("click", () => void resolveKeepMine());
+dom.conflictKeepDisk.addEventListener("click", () => void resolveKeepDisk());
+// 「先不决定」只收起对话框，冲突照挂、自动保存照冻——状态栏那行字是回来的入口
+dom.conflictLater.addEventListener("click", () => hideConflict());
+dom.conflictClose.addEventListener("click", () => hideConflict());
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !dom.conflictMask.hidden) hideConflict();
+});
+dom.saveLabel.addEventListener("click", () => {
+  if (state.conflict) showConflict();
 });
 
 window.addEventListener("beforeunload", (event) => {

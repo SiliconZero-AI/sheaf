@@ -304,6 +304,57 @@
           </div>
         </div>
 
+        <div class="conflict-mask" id="conflict-mask" hidden>
+          <div class="conflict-box" role="alertdialog" aria-labelledby="conflict-title">
+            <div class="conflict-head">
+              <!-- 分叉而不是三角感叹号：两份内容各自成立，这不是报错，语气要稳 -->
+              <svg class="conflict-mark wd-line-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <circle cx="7" cy="5.5" r="2" />
+                <circle cx="7" cy="18.5" r="2" />
+                <circle cx="17.5" cy="18.5" r="2" />
+                <path d="M7 7.5v9" />
+                <path d="M7 12h6.5a4 4 0 0 1 4 4v.5" />
+              </svg>
+              <div class="conflict-head-text">
+                <b id="conflict-title" data-i18n="conflict.title">这个文件在 Sheaf 之外被改过</b>
+                <p class="conflict-body"><code id="conflict-file"></code><span data-i18n="conflict.bodyTail">的两份内容已经分叉。选一份留下。</span></p>
+              </div>
+              <button type="button" id="conflict-close" class="icon-btn" data-i18n-title="conflict.closeTitle" title="先不决定 Esc">
+                <svg class="wd-line-icon" viewBox="0 0 24 24" width="15" height="15"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </div>
+
+            <div class="conflict-choices">
+              <button type="button" class="conflict-choice is-mine" id="conflict-keep-mine">
+                <span class="cc-head">
+                  <svg class="wd-line-icon" viewBox="0 0 24 24" width="16" height="16"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z" /><path d="M15 6l3 3" /></svg>
+                  <b data-i18n="conflict.mineLabel">你在 Sheaf 里的</b>
+                </span>
+                <span class="cc-meta" id="conflict-mine-meta"></span>
+                <span class="cc-head-line" id="conflict-mine-head"></span>
+                <span class="cc-what" data-i18n="conflict.mineWhat">写回磁盘，盖掉外部那份</span>
+              </button>
+              <button type="button" class="conflict-choice" id="conflict-keep-disk">
+                <span class="cc-head">
+                  <svg class="wd-line-icon" viewBox="0 0 24 24" width="16" height="16"><path d="M5 3h11l3 3v15H5z" /><path d="M8 3v6h7M8 14h8v7H8z" /></svg>
+                  <b data-i18n="conflict.diskLabel">磁盘上的</b>
+                </span>
+                <span class="cc-meta" id="conflict-disk-meta"></span>
+                <span class="cc-head-line" id="conflict-disk-head"></span>
+                <span class="cc-what" data-i18n="conflict.diskWhat">读回来，放弃你的改动</span>
+              </button>
+            </div>
+
+            <div class="conflict-foot">
+              <span class="conflict-frozen">
+                <svg class="wd-line-icon" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2" /><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3" /></svg>
+                <span data-i18n="conflict.frozen">选好之前不会自动保存，你的改动不会丢</span>
+              </span>
+              <button type="button" class="conflict-later" id="conflict-later" data-i18n="conflict.later">先不决定</button>
+            </div>
+          </div>
+        </div>
+
         <aside class="pane pane-right">
           <div class="pane-head" data-i18n="pane.outline">大纲</div>
           <div class="pane-body" id="outline"></div>
