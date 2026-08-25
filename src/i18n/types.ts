@@ -102,6 +102,23 @@ export interface Dict {
     saving: string;
     unsaved: string;
     savedAt: (time: string) => string;
+    /** 外部改动待处理：在用户选定留哪份之前，这篇一律不写盘 */
+    conflict: string;
+  };
+  conflict: {
+    title: string;
+    body: (name: string) => string;
+    frozen: string;
+    keepMine: string;
+    keepMineHint: string;
+    keepDisk: string;
+    keepDiskHint: string;
+    later: string;
+    closeTitle: string;
+    reloaded: string;
+    resolvedMine: string;
+    resolvedDisk: string;
+    reloadFailed: string;
   };
   meta: {
     charCount: (n: number) => string;

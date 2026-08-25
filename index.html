@@ -304,6 +304,28 @@
           </div>
         </div>
 
+        <div class="conflict-mask" id="conflict-mask" hidden>
+          <div class="conflict-box" role="alertdialog" aria-labelledby="conflict-title">
+            <div class="conflict-head">
+              <b id="conflict-title" data-i18n="conflict.title">这个文件在 Sheaf 之外被改过</b>
+              <button type="button" id="conflict-close" class="icon-btn" data-i18n-title="conflict.closeTitle" title="先不决定 Esc">✕</button>
+            </div>
+            <p class="conflict-body" id="conflict-body"></p>
+            <p class="conflict-frozen" data-i18n="conflict.frozen">在你选好之前，Sheaf 不会自动保存这篇，你的改动不会丢。</p>
+            <div class="conflict-choices">
+              <button type="button" class="conflict-choice" id="conflict-keep-mine">
+                <b data-i18n="conflict.keepMine">保留我在 Sheaf 里的</b>
+                <span data-i18n="conflict.keepMineHint">把画布上这份写回磁盘，覆盖外部的改动</span>
+              </button>
+              <button type="button" class="conflict-choice" id="conflict-keep-disk">
+                <b data-i18n="conflict.keepDisk">改用磁盘上的</b>
+                <span data-i18n="conflict.keepDiskHint">读回外部那份，放弃你在 Sheaf 里的改动</span>
+              </button>
+            </div>
+            <button type="button" class="conflict-later" id="conflict-later" data-i18n="conflict.later">先不决定</button>
+          </div>
+        </div>
+
         <aside class="pane pane-right">
           <div class="pane-head" data-i18n="pane.outline">大纲</div>
           <div class="pane-body" id="outline"></div>
