@@ -1437,6 +1437,12 @@ body {
   box-shadow: var(--shadow-lg);
 }
 
+/* 弹框时焦点落在这个容器上（见 main.ts 的 showConflict），
+   但它不是可点的控件，不该画出聚焦框——那会让人以为按回车能选中什么 */
+.conflict-box:focus {
+  outline: none;
+}
+
 .conflict-head {
   display: flex;
   align-items: flex-start;

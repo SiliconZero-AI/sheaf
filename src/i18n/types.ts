@@ -105,6 +105,8 @@ export interface Dict {
     savedAt: (time: string) => string;
     /** 外部改动待处理：在用户选定留哪份之前，这篇一律不写盘 */
     conflict: string;
+    /** 这篇在磁盘上已经没了：内容留在画布上，但不再自动写回去 */
+    missing: string;
   };
   conflict: {
     title: string;
@@ -147,6 +149,10 @@ export interface Dict {
     removedFromList: (name: string) => string;
     readonlyEncoding: (encoding: string) => string;
     unsavedBeforeSwitch: string;
+    /** 正开着的这篇被外部删掉了。内容还在画布上，等用户按 Ctrl+S 才写回去 */
+    fileMissing: string;
+    /** 用户按了 Ctrl+S，把被删的那篇重新写回磁盘 */
+    fileRestored: string;
     openFailed: string;
     pickerBusy: string;
     pickerOpeningDir: string;

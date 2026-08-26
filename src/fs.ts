@@ -13,6 +13,7 @@ import {
 } from "@tauri-apps/plugin-fs";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { t } from "./i18n";
+import { parseAnchor, type DocAnchor } from "./anchor";
 
 /** 在桌面壳里跑还是在浏览器里跑。Tauri 2 会往 window 上注入 __TAURI_INTERNALS__ */
 export const isDesktop =
@@ -221,6 +222,7 @@ const STORE = "handles";
 const ROOT_KEY = "root";
 const ROOTS_KEY = "roots";
 const LAST_FILE_KEY = "last-file";
+const POSITIONS_KEY = "positions";
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -340,6 +342,81 @@ export async function recallLastFile(): Promise<LastFile | null> {
   return parseLastFile(await idbGet<unknown>(LAST_FILE_KEY));
 }
 
+// ---------- 每篇上次读到哪 ----------
+//
+// 记的是内容锚点（见 anchor.ts），不是像素也不是全局字符数——
+// 那两样在「AI 从外面改了文件」之后全废，而那正是 Sheaf 的主场景。
+
+export interface FilePosition {
+  /** 上次滚到哪 */
+  scroll: DocAnchor | null;
+  /** 上次光标停在哪 */
+  cursor: DocAnchor | null;
+  /** 记下的时刻，用来淘汰最老的 */
+  at: number;
+}
+
+export type PositionMap = Record<string, FilePosition>;
+
+/** 最多记这么多篇，超了淘汰最久没碰的。不封顶的话这张表会越用越大 */
+export const POSITION_CAP = 200;
+
+/**
+ * 一篇稿子在这张表里的键。
+ * 工作区里的篇按「工作区序号 + 相对路径」，散篇按绝对路径——跟 LastFile 两种 kind 对齐。
+ * 散篇的路径要归一化：同一个文件被系统用不同大小写报回来时，不能记成两条。
+ */
+export function positionKey(last: LastFile): string {
+  return last.kind === "loose"
+    ? `loose:${normalizePath(last.path)}`
+    : `space:${last.index}:${last.path}`;
+}
+
+/** 认不出来的一律丢掉——拿半残的记录去跳位置，比不跳更糟 */
+export function parsePositions(value: unknown): PositionMap {
+  if (!value || typeof value !== "object") return {};
+  const out: PositionMap = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (!item || typeof item !== "object") continue;
+    const raw = item as Record<string, unknown>;
+    const scroll = parseAnchor(raw.scroll);
+    const cursor = parseAnchor(raw.cursor);
+    if (!scroll && !cursor) continue;
+    out[key] = { scroll, cursor, at: typeof raw.at === "number" ? raw.at : 0 };
+  }
+  return out;
+}
+
+/** 超过上限就把最久没碰的丢掉，留下最近的 cap 条 */
+export function trimPositions(map: PositionMap, cap: number = POSITION_CAP): PositionMap {
+  const keys = Object.keys(map);
+  if (keys.length <= cap) return map;
+  const kept = keys
+    .sort((a, b) => (map[b].at ?? 0) - (map[a].at ?? 0))
+    .slice(0, cap);
+  const out: PositionMap = {};
+  for (const key of kept) out[key] = map[key];
+  return out;
+}
+
+export async function recallPositions(): Promise<PositionMap> {
+  return parsePositions(await idbGet<unknown>(POSITIONS_KEY));
+}
+
+/**
+ * 记住某一篇的位置。存不进去（隐私模式、配额满）不该影响正在写的东西，
+ * 所以吞掉错误——大不了下次开这篇回到开头。
+ */
+export async function rememberPosition(key: string, position: FilePosition): Promise<void> {
+  try {
+    const all = await recallPositions();
+    all[key] = position;
+    await idbSet(POSITIONS_KEY, trimPositions(all));
+  } catch (error) {
+    console.warn("[Sheaf] 记不住阅读位置", error);
+  }
+}
+
 /**
  * 这个散篇句柄记得住吗——记得住就返回它的绝对路径。
  * 只有桌面壳造的句柄有路径；浏览器句柄返回 null，调用方据此跳过记忆。
@@ -380,6 +457,95 @@ export function relativePathInside(root: string, abs: string): string | null {
   if (!f.toLowerCase().startsWith(`${r.toLowerCase()}/`)) return null;
   const rel = f.slice(r.length + 1);
   return rel === "" ? null : rel;
+}
+
+/**
+ * 把一个绝对路径压成能拿来比对的样子：反斜杠换成正斜杠、去掉结尾斜杠、全小写。
+ * Windows 上同一个文件能有好几种写法（`D:\a\B.md`、`d:/a/b.md`），
+ * 逐字比会把同一个文件当成两个——监听那边一旦比错，外部改动就同步不过来。
+ */
+export function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+}
+
+/** 两个路径指的是不是同一个文件 */
+export function samePath(a: string | null, b: string | null): boolean {
+  if (!a || !b) return false;
+  return normalizePath(a) === normalizePath(b);
+}
+
+/**
+ * 监听回调报来的这一批路径里，有没有碰到我们正开着的那篇。
+ *
+ * 为什么连「碰到」都要单独成一个函数：AI 工具改文件常用「先写一份临时文件、
+ * 再把它改名盖掉原来那份」，这一串动作报上来的路径里，原文件名可能出现在
+ * 任意一条事件上（rename 的 from/to 都算）。只要这批里出现过它，就该去看一眼。
+ */
+export function hitsWatchedFile(eventPaths: string[], target: string | null): boolean {
+  if (!target) return false;
+  return eventPaths.some((path) => samePath(path, target));
+}
+
+/**
+ * 这个路径的变动会不会改变左栏的长相。
+ *
+ * 单独成一个函数是因为它挡的是一笔真实开销：AI 落盘路上会甩出临时文件
+ * （`稿子.md.tmp`）和插图（`images/x.png`），每一个都触发一次全目录递归重扫的话，
+ * AI 连着写十个文件就是十次扫盘。左栏本来也只列 `.md`。
+ *
+ * 目录要算进来——新建/删除文件夹得反映到左栏，而目录名没有扩展名。
+ * 判「没有扩展名就是目录」会把 `LICENSE` 这类无扩展名文件也算进来，
+ * 代价只是多扫一次；反过来漏判目录，用户新建的文件夹就不出现，那才是 bug。
+ */
+export function affectsTree(path: string): boolean {
+  const name = path.replace(/\\/g, "/").split("/").pop() ?? "";
+  if (/\.(md|markdown)$/i.test(name)) return true;
+  return name !== "" && !name.includes(".");
+}
+
+// AI 流式落盘时，一秒能写好几次。每落一次就整篇重渲染一次，画面就是在抖
+// （2026-08-25 真机实测：7 秒内触发约 46 次重载，肉眼可见连续闪动）。
+//
+// 光把「攒多久再处理」的窗口调大治不了本：真实写入间隔不固定，窗口调多大都能被绕过。
+// 靠谱的判据是磁盘自己——**连续安静一小会儿**才算这一轮写完。
+// 副作用还是好的：AI 写到一半的内容本来也不该给人看。
+
+/** 磁盘连续这么久没再变，就算这一轮写完了 */
+export const SETTLE_QUIET_MS = 250;
+/** 兜底上限：对面一直写个不停，也不能让用户永远看着旧内容 */
+export const SETTLE_MAX_MS = 5000;
+
+/**
+ * 已经等了 elapsedMs 还在等磁盘安静，现在该继续等还是直接显示。
+ * 跟 missingStep 同构：判定拆出来单独测，等待本身留在调用方。
+ */
+export function settleStep(elapsedMs: number): { verdict: "wait" | "go"; waitMs: number } {
+  if (elapsedMs >= SETTLE_MAX_MS) return { verdict: "go", waitMs: 0 };
+  // 最后一次别睡过头，正好停在上限
+  return { verdict: "wait", waitMs: Math.min(SETTLE_QUIET_MS, SETTLE_MAX_MS - elapsedMs) };
+}
+
+// 文件忽然 stat 不到了，不代表它真没了——「写临时文件再改名」那一瞬间有个真实空窗：
+// 旧的已经拿走、新的还没放上。这时候下结论就会把用户正开着的稿子判成「文件没了」，
+// 是这个功能最容易翻车的地方。所以看不见时先等一等，等够了才认。
+
+/** 最多等这么久再下结论 */
+export const MISSING_GRACE_MS = 2000;
+/** 等待期间每隔这么久回头看一眼 */
+export const MISSING_RETRY_MS = 400;
+
+/**
+ * 已经等了 elapsedMs 毫秒还是看不见文件，现在该怎么办。
+ * 判错的后果是「用户的稿子看起来凭空消失」，所以拆成纯函数单独测。
+ */
+export function missingStep(elapsedMs: number): {
+  verdict: "wait" | "gone";
+  retryInMs: number;
+} {
+  if (elapsedMs >= MISSING_GRACE_MS) return { verdict: "gone", retryInMs: 0 };
+  // 最后一次别睡过头，正好停在宽限期末尾
+  const retryInMs = Math.min(MISSING_RETRY_MS, MISSING_GRACE_MS - elapsedMs);
+  return { verdict: "wait", retryInMs };
 }
 
 /**
