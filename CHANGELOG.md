@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.3 — 2026-08-25
 
 For anyone who edits their drafts with an AI tool while Sheaf is open.
 
@@ -9,6 +9,7 @@ For anyone who edits their drafts with an AI tool while Sheaf is open.
 - **Every draft remembers where you left off.** Switch drafts, or close and reopen Sheaf, and you come back to the place and cursor position you left — instead of the top of the file, or the very end.
 - **New files appear in the file list on their own.** A draft created outside Sheaf shows up in the folder without a manual refresh. Sheaf does not switch to it — whatever you are writing stays open.
 - **A draft deleted outside Sheaf keeps its text on screen.** Autosave pauses and the status bar says the file is gone from disk. Press `Ctrl+S` to write it back; Sheaf will not recreate it on its own.
+- The Help panel covers both of these now, so you can find out what changed without leaving the app.
 
 ## 0.1.2 — 2026-08-25
 
