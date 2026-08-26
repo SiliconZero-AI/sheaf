@@ -79,6 +79,8 @@ export const en: Dict = {
     howtoImages: "🖼️ Paste or drag in images — they're saved automatically into <code>images/</code> next to the draft",
     howtoTable: "📊 Put your cursor in a table and row/column buttons pop up in the top-right corner",
     howtoResume: "📖 Every draft remembers where you left off — switch away or restart, you land back in the same place",
+    howtoUpdate:
+      "⬆️ New versions announce themselves — one click installs. You can also check by hand below",
     howtoExport: "📤 “Export” in the top bar saves as .md, a web page, or prints straight to PDF",
     shortcutsTitle: "⌨️ Shortcuts",
     shortcutFind: "Find in current draft",
@@ -125,6 +127,28 @@ export const en: Dict = {
     resolvedMine: "Disk overwritten with your version",
     resolvedDisk: "Switched to the version on disk",
     reloadFailed: "Could not read the version on disk; nothing changed",
+  },
+  update: {
+    title: "A new version is available",
+    body: (from, to) => `Sheaf ${to} is ready to install. You are on ${from}.`,
+    now: "Update now",
+    later: "Not now",
+    closeTitle: "Not now Esc",
+    progress: (received, total) =>
+      total ? `Downloading ${received} / ${total}` : `Downloading ${received}`,
+    blockedConflict:
+      "This draft still has an outside change you have not decided on. Settle that first — updating restarts Sheaf.",
+    blockedMissing:
+      "This draft is gone from disk; its text only lives on the canvas. Press Ctrl+S to write it back, then update.",
+    blockedUnsaved:
+      "The last save did not go through. Updating now would lose what is on the canvas. Save the draft first.",
+    failed:
+      "The update did not install. Your drafts are untouched — try again later, or download the new version from the website.",
+    safe: "Your draft is saved before the update starts",
+    checkLabel: "Check for updates",
+    checking: "Checking for updates…",
+    upToDate: "You are on the latest version",
+    checkFailed: "Could not check for updates — you may be offline",
   },
   meta: {
     charCount: (n) => `${n} chars`,

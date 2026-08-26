@@ -83,6 +83,7 @@ export interface Dict {
     howtoExport: string;
     /** 每篇记住上次读到哪 */
     howtoResume: string;
+    howtoUpdate: string;
     shortcutsTitle: string;
     shortcutFind: string;
     shortcutGlobalFind: string;
@@ -133,6 +134,29 @@ export interface Dict {
     resolvedMine: string;
     resolvedDisk: string;
     reloadFailed: string;
+  };
+  update: {
+    title: string;
+    /** 「Sheaf 0.1.4 可用，你现在装的是 0.1.3」——两个版本号并排放，用户才知道自己在从哪跳到哪 */
+    body: (from: string, to: string) => string;
+    now: string;
+    later: string;
+    closeTitle: string;
+    /** 下载中。总长度未知时 total 为 null（服务端没给 Content-Length） */
+    progress: (received: string, total: string | null) => string;
+    /** 装之前那道闸把人拦下来时的解释。三种原因各有各的出路，不能合并成一句 */
+    blockedConflict: string;
+    blockedMissing: string;
+    blockedUnsaved: string;
+    /** 下载或安装本身失败 */
+    failed: string;
+    /** 更新期间不会丢稿的安抚话，跟冲突框的 frozen 同一个位置、同一个优先级 */
+    safe: string;
+    /** 帮助面板里那个按钮 */
+    checkLabel: string;
+    checking: string;
+    upToDate: string;
+    checkFailed: string;
   };
   meta: {
     charCount: (n: number) => string;

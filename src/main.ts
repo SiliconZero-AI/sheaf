@@ -9,6 +9,14 @@ import { EmojiPicker } from "./emoji";
 import { GlobalSearch } from "./global-search";
 import { TableToolbar } from "./table-toolbar";
 import { HelpPanel } from "./help";
+import {
+  canInstallNow,
+  checkForUpdate,
+  UpdatePrompt,
+  type BlockReason,
+  type DownloadProgress,
+  type Update,
+} from "./update";
 import { currentTheme, setupTheme } from "./theme";
 import { ImageStore, safeAlt } from "./images";
 import { applyStaticI18n, currentLang, onLangChange, t } from "./i18n";
@@ -123,6 +131,17 @@ const dom = {
   conflictKeepMine: need<HTMLButtonElement>("#conflict-keep-mine"),
   conflictKeepDisk: need<HTMLButtonElement>("#conflict-keep-disk"),
   conflictLater: need<HTMLButtonElement>("#conflict-later"),
+  helpCheck: need<HTMLButtonElement>("#help-check"),
+  updateMask: need<HTMLDivElement>("#update-mask"),
+  updateBox: need<HTMLDivElement>("#update-box"),
+  updateBody: need<HTMLParagraphElement>("#update-body"),
+  updateClose: need<HTMLButtonElement>("#update-close"),
+  updateLater: need<HTMLButtonElement>("#update-later"),
+  updateNow: need<HTMLButtonElement>("#update-now"),
+  updateProgress: need<HTMLDivElement>("#update-progress"),
+  updateBar: need<HTMLElement>("#update-bar"),
+  updateProgressText: need<HTMLSpanElement>("#update-progress-text"),
+  updateBlocked: need<HTMLParagraphElement>("#update-blocked"),
 };
 
 // 首帧启动就把静态标记里的 data-i18n 系列属性填成当前语言；语言切换时 applyLanguage() 会再跑一遍
@@ -727,6 +746,109 @@ async function checkExternalChange(): Promise<void> {
   }
   if (await reloadFromDisk()) editor.tip(t().conflict.reloaded, 3000);
 }
+
+// ---------- 应用内更新 ----------
+//
+// 判断逻辑（能不能装、为什么不能）在 src/update.ts，有测试。这里只负责接线。
+
+const updatePrompt = new UpdatePrompt(
+  {
+    mask: dom.updateMask,
+    box: dom.updateBox,
+    body: dom.updateBody,
+    close: dom.updateClose,
+    later: dom.updateLater,
+    now: dom.updateNow,
+    progress: dom.updateProgress,
+    bar: dom.updateBar,
+    progressText: dom.updateProgressText,
+    blocked: dom.updateBlocked,
+  },
+  () => ({
+    body: t().update.body,
+    progress: t().update.progress,
+    blocked: {
+      conflict: t().update.blockedConflict,
+      missing: t().update.blockedMissing,
+      unsaved: t().update.blockedUnsaved,
+    },
+    failed: t().update.failed,
+  }),
+  runUpdate,
+);
+
+/**
+ * 「现在更新」按下去之后的整条路。
+ *
+ * 第一步就是落盘，而且它的结果说了算——因为 install() 在 Windows 上是
+ * `std::process::exit(0)`（见 src/update.ts 顶部的注释），进程会被硬杀，
+ * 画布上没写回磁盘的东西一个字都不会留下来。这不是「保险起见先存一下」，
+ * 这是这条路上唯一的闸。
+ *
+ * 返回被拦下的原因；一路通到底的话这个函数根本不会返回——进程已经没了。
+ */
+async function runUpdate(
+  update: Update,
+  onProgress: (p: DownloadProgress) => void,
+): Promise<BlockReason | "failed" | null> {
+  const saved = await save();
+  const verdict = canInstallNow({
+    conflict: state.conflict,
+    missing: state.missing,
+    saved,
+  });
+  if (!verdict.ok) return verdict.reason;
+
+  try {
+    // download 和 install 分开而不是用 downloadAndInstall：
+    // 这样进度条走完了才退出，慢网下用户看得见东西在动，不会以为卡死
+    let received = 0;
+    let total: number | null = null;
+    await update.download((event) => {
+      if (event.event === "Started") total = event.data.contentLength ?? null;
+      else if (event.event === "Progress") received += event.data.chunkLength;
+      onProgress({ received, total });
+    });
+    // 下载这段时间里用户可能又敲了字（框是模态的，但外部改动、定时器都还活着）。
+    // 再落一次盘，代价是一次写入，收益是不丢那几个字
+    if (!(await save())) return "unsaved";
+    await update.install();
+    // Windows 上到不了这行。macOS / Linux 将来要在这里自己重启
+    return null;
+  } catch (error) {
+    console.error("[Sheaf] 更新失败", error);
+    return "failed";
+  }
+}
+
+/** 启动时那一次。失败完全静默——断网时弹「更新检查失败」，等于跟「离线也能用」自相矛盾 */
+async function checkUpdateOnStart(): Promise<void> {
+  const result = await checkForUpdate();
+  if (result.kind === "update") updatePrompt.show(result.update);
+}
+
+/** 帮助面板里那个按钮。跟启动检查相反，三种结局都要有反馈——用户明确点了，没反应比报错更糟 */
+async function checkUpdateManually(): Promise<void> {
+  dom.helpCheck.disabled = true;
+  dom.helpCheck.textContent = t().update.checking;
+  try {
+    const result = await checkForUpdate();
+    if (result.kind === "update") {
+      help.hide();
+      updatePrompt.show(result.update);
+    } else if (result.kind === "current") {
+      editor.tip(t().update.upToDate, 3000);
+    } else {
+      console.warn("[Sheaf] 查更新失败", result.error);
+      editor.tip(t().update.checkFailed, 4000);
+    }
+  } finally {
+    dom.helpCheck.disabled = false;
+    dom.helpCheck.textContent = t().update.checkLabel;
+  }
+}
+
+dom.helpCheck.addEventListener("click", () => void checkUpdateManually());
 
 // ---------- 实时监听 ----------
 //
@@ -1420,6 +1542,10 @@ async function boot(): Promise<void> {
     if (handle) await openLooseFile(handle);
   }
   if (isDesktop) await setupNativeFocus();
+  // 查更新排在最后，还要再等几秒：启动这几百毫秒里要恢复工作区、扫目录树、
+  // 读回上次那篇并复位光标，一个网络请求挤进来只会让开机更慢。
+  // 用户也不需要开机第一眼就看见更新框——他打开 Sheaf 是来写字的
+  if (isDesktop) window.setTimeout(() => void checkUpdateOnStart(), 3000);
 }
 
 /**

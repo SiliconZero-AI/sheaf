@@ -45,8 +45,25 @@ jobs:
             throw "Tag ${{ github.ref_name }} does not match app version v$version"
           }
 
+      # 更新包签名。私钥只存在于 Secret 里——本地开发没有它，所以本地打包要加
+      # `--no-sign`（`tauri.conf.json` 一旦配了 pubkey，没有私钥的构建会直接失败）。
+      # 这跟代码签名证书是两码事：这把钥匙防的是「别人伪造一个更新包推给用户」。
       - name: Build NSIS installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri build -- --bundles nsis
+
+      # 签名文件没生成就等于这一版发出去没人能自动更新，而且**构建本身不会报错**。
+      # 所以在这里显式拦一道：workflow_dispatch 手动跑也走这步，早点暴露密钥配错。
+      - name: Verify the updater signature was produced
+        shell: pwsh
+        run: |
+          $sig = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe.sig -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -eq $sig) {
+            throw "No .sig next to the installer. Check TAURI_SIGNING_PRIVATE_KEY / _PASSWORD secrets."
+          }
+          Write-Output "Updater signature: $($sig.Name)"
 
       - name: Generate SHA-256 checksum
         shell: pwsh
@@ -65,6 +82,7 @@ jobs:
           name: sheaf-windows-x64-${{ github.ref_name }}
           path: |
             src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/nsis/*-setup.exe.sig
             src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
@@ -95,5 +113,29 @@ jobs:
           $notes = Get-Content .github/RELEASE_NOTES_TEMPLATE.md -Raw
           $notes = $notes.Replace('{{INSTALLER}}', $installer.Name).Replace('{{SHA256}}', $hash)
           Set-Content -Path release-notes.md -Value $notes -Encoding utf8
-          gh release create "${{ github.ref_name }}" "$($installer.FullName)" "$stable" "$dir/SHA256SUMS.txt" --title "Sheaf ${{ github.ref_name }}" --notes-file release-notes.md --draft
+
+          # 更新清单。已装的 Sheaf 每次启动来读这一个文件，靠它判断有没有新版。
+          #
+          # url 用**打了 tag 的固定地址**，不用 /releases/latest/download/：签名是对
+          # 具体那串字节算的，tag 地址永远指向跟这份清单同一次构建的产物，对不上是不可能的。
+          # notes 只放 CHANGELOG 的地址而不塞正文——更新框是双语的，往里灌一段英文说明会读着别扭。
+          $sig = Get-ChildItem "$dir/*-setup.exe.sig" | Select-Object -First 1
+          if ($null -eq $sig) { throw "No .sig for the installer; refusing to publish an unupdatable release" }
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $manifest = [ordered]@{
+            version  = $version
+            notes    = "https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md"
+            pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = [ordered]@{
+              "windows-x86_64" = [ordered]@{
+                signature = (Get-Content $sig.FullName -Raw).Trim()
+                url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$($installer.Name)"
+              }
+            }
+          }
+          $manifestPath = Join-Path $dir "latest.json"
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path $manifestPath -Encoding utf8
+          Write-Output "latest.json for $version -> $($installer.Name)"
+
+          gh release create "${{ github.ref_name }}" "$($installer.FullName)" "$stable" "$($sig.FullName)" "$manifestPath" "$dir/SHA256SUMS.txt" --title "Sheaf ${{ github.ref_name }}" --notes-file release-notes.md --draft
           Write-Output "Draft release ${{ github.ref_name }} created. Review it on GitHub, then click Publish release."

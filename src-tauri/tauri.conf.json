@@ -27,8 +27,20 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdFNUVEODQwMjlDQ0FDREIKUldUYnJNd3BRTmhlZmdIR0UxbDdyYVk5TDBPNjB4VzZQdHlMazVBZU9wL2tLRHZycUQyNmFFdXMK",
+      "endpoints": [
+        "https://github.com/SiliconZero-AI/sheaf/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis", "msi"],
     "icon": [
       "icons/32x32.png",

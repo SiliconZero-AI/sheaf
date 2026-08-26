@@ -31,3 +31,8 @@ tauri-plugin-single-instance = "2"
 # 不是新引入的包——tauri / tao / 各插件已经在编译 windows-sys 0.61，这里只是显式声明用它。
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
+
+# 应用内自动更新。限定桌面三平台是官方给的写法（`cargo add --target`）——
+# 这个插件不支持移动端，无条件依赖会让将来真去编 iOS/Android 时在依赖解析阶段就炸。
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-updater = "2.10.1"
