@@ -1617,3 +1617,165 @@ body {
   text-decoration: underline dotted;
   text-underline-offset: 3px;
 }
+
+/* ---------- 应用内更新 ---------- */
+/* 遮罩、外框、头部、脚部全部复用 .conflict-* —— 同一种模态，另起一套只会让两处慢慢走样。
+   这里只补冲突框没有的三样：进度条、拦截说明、右下角那对按钮。 */
+
+/* 帮助面板里的手动检查。它跟版本号并排，不该比版本号还重——
+   真正需要被看见的是启动时自己弹出来的那个框，这里只是「我现在就想知道」的出口 */
+/* 检查结果就近显示。放这里而不是走 editor.tip()：帮助面板盖在编辑器上面，
+   Vditor 的提示条会落在用户看不见的地方（2026-08-25 真机撞到过）。
+   靠 margin-left:auto 把它和按钮一起推到右边，版本号留在左边 */
+.help-check-status {
+  margin-left: auto;
+  font: 400 12px/1.5 var(--font-ui);
+  color: var(--ink-3);
+}
+
+.help-check-status[hidden] {
+  display: none;
+}
+
+/* 有状态文字时按钮不再自己抢那个 auto，否则两者中间会被撑开一大段 */
+.help-check-status:not([hidden]) + .help-check {
+  margin-left: 6px;
+}
+
+.help-check {
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  margin-left: auto;
+  padding: 3px 7px;
+  background: transparent;
+  font: 400 12px/1.5 var(--font-ui);
+  color: var(--accent-strong);
+  cursor: pointer;
+}
+
+.help-check:hover {
+  background: var(--accent-soft);
+}
+
+.help-check:disabled {
+  color: var(--mute);
+  background: transparent;
+  cursor: default;
+}
+
+/* 这一版改了什么。条目可能有五六条，给一个上限让框不至于顶到屏幕外；
+   超了就在这块里自己滚，框本身的布局不动 */
+.update-notes {
+  max-height: 190px;
+  overflow-y: auto;
+  margin-top: 14px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.update-notes[hidden] {
+  display: none;
+}
+
+.update-notes p {
+  margin: 0 0 7px;
+  font: 400 12.5px/1.65 var(--font-ui);
+  color: var(--ink-2);
+}
+
+.update-notes ul {
+  margin: 0;
+  padding-left: 17px;
+}
+
+.update-notes li {
+  margin-bottom: 5px;
+  font: 400 12.5px/1.65 var(--font-ui);
+  color: var(--ink-2);
+}
+
+.update-notes li:last-child,
+.update-notes p:last-child {
+  margin-bottom: 0;
+}
+
+.update-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.update-progress[hidden] {
+  display: none;
+}
+
+.update-track {
+  flex-grow: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--hover);
+  overflow: hidden;
+}
+
+.update-bar {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.18s linear;
+}
+
+/* 等宽数字：下载中这行数字每秒跳好几次，比例字宽会让整行左右抖 */
+.update-progress-text {
+  flex: none;
+  font: 400 11.5px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--mute);
+}
+
+/* 被闸门拦下来的解释。用 warn 而不是红色：这不是报错，是「先去把那件事做完」 */
+.update-blocked {
+  margin: 13px 0 0;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  font: 400 12.5px/1.6 var(--font-ui);
+  color: var(--ink-2);
+}
+
+.update-blocked[hidden] {
+  display: none;
+}
+
+.update-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-now {
+  appearance: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 14px;
+  background: var(--accent);
+  font: 500 12.5px/1 var(--font-ui);
+  color: var(--accent-ink);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.update-now:hover {
+  filter: brightness(1.08);
+}
+
+.update-now:disabled {
+  filter: none;
+  opacity: 0.55;
+  cursor: default;
+}

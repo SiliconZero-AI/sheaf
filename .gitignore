@@ -45,3 +45,9 @@ docs/SITE-COPY.md
 *.dc.html
 canvas.json
 sheaf-conflict-dialog.html
+
+# 更新包签名密钥。私钥只该待在本机 ~/.tauri/ 和 GitHub Actions Secret 里，
+# 一旦进了仓库，任何人都能伪造更新包推给用户。公钥（.pub）本身无害，
+# 但它的正式那份写在 tauri.conf.json 里，这里出现的只会是误放，一并挡掉。
+*.key
+*.key.pub

@@ -290,6 +290,7 @@
                 <li data-i18n="help.howtoTable">📊 光标停进表格，右上角自动冒出加行/加列按钮</li>
                 <li data-i18n="help.howtoExport">📤 顶栏「导出」可以存成 .md、网页，或直接打印成 PDF</li>
                 <li data-i18n="help.howtoResume">📖 每篇记得上次读到哪，切走再回来、关掉重开都落回原处</li>
+                <li data-i18n="help.howtoUpdate">⬆️ 有新版会自己提示你，点一下就装好；也可以在下面手动查一次</li>
               </ul>
             </section>
             <section>
@@ -306,6 +307,13 @@
             <div class="help-foot">
               <span data-i18n="help.versionLabel">版本</span>
               <span class="help-version" id="help-version"></span>
+              <!-- 手动检查的落脚点。启动时那次检查是静默的（断网不该弹错误框），
+                   所以必须有一个「我现在就想知道」的入口，且它的结果一律可见 -->
+              <!-- 结果写在这里、不走 editor.tip()：这个面板正盖在编辑器上面，
+                   Vditor 的提示条会弹在用户看不见的地方。2026-08-25 真机撞到过——
+                   点了「检查更新」看着像没反应，其实请求发了、结论也出了，只是被这块面板挡住 -->
+              <span class="help-check-status" id="help-check-status" hidden></span>
+              <button type="button" class="help-check" id="help-check" data-i18n="update.checkLabel">检查更新</button>
             </div>
           </div>
         </div>
@@ -357,6 +365,52 @@
                 <span data-i18n="conflict.frozen">选好之前不会自动保存，你的改动不会丢</span>
               </span>
               <button type="button" class="conflict-later" id="conflict-later" data-i18n="conflict.later">先不决定</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 更新提示。整套结构和样式类都跟冲突框共用：同一种模态、同一条焦点规矩
+             （弹出时焦点给容器不给按钮，见 src/update.ts 的注释），没必要造第二套。 -->
+        <div class="conflict-mask" id="update-mask" hidden>
+          <div class="conflict-box" id="update-box" role="alertdialog" aria-labelledby="update-title" tabindex="-1">
+            <div class="conflict-head">
+              <!-- 向下的箭头落进托盘：更新的通用意象，跟冲突框那个分叉图标区分得开 -->
+              <svg class="conflict-mark wd-line-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <path d="M12 3v11" />
+                <path d="M8 10.5l4 4 4-4" />
+                <path d="M4 17v2.5a1.5 1.5 0 0 0 1.5 1.5h13a1.5 1.5 0 0 0 1.5-1.5V17" />
+              </svg>
+              <div class="conflict-head-text">
+                <b id="update-title" data-i18n="update.title">有新版本可用</b>
+                <p class="conflict-body" id="update-body"></p>
+              </div>
+              <button type="button" id="update-close" class="icon-btn" data-i18n-title="update.closeTitle" title="以后再说 Esc">
+                <svg class="wd-line-icon" viewBox="0 0 24 24" width="15" height="15"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </div>
+
+            <!-- 这一版改了什么。内容跟着 latest.json 一起从网上下来——用户手上这份 App
+                 是旧版，它的安装包里只有发布它那天的 CHANGELOG，自己讲不出新版改了啥 -->
+            <div class="update-notes" id="update-notes" hidden></div>
+
+            <div class="update-progress" id="update-progress" hidden>
+              <div class="update-track"><i class="update-bar" id="update-bar"></i></div>
+              <span class="update-progress-text" id="update-progress-text"></span>
+            </div>
+
+            <!-- 装不了的原因写在框里而不是走 editor.tip()：遮罩盖着编辑器，
+                 Vditor 的提示条会出现在用户看不到的地方 -->
+            <p class="update-blocked" id="update-blocked" hidden></p>
+
+            <div class="conflict-foot">
+              <span class="conflict-frozen">
+                <svg class="wd-line-icon" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2" /><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3" /></svg>
+                <span data-i18n="update.safe">更新前会先把稿子存好</span>
+              </span>
+              <span class="update-actions">
+                <button type="button" class="conflict-later" id="update-later" data-i18n="update.later">以后再说</button>
+                <button type="button" class="update-now" id="update-now" data-i18n="update.now">现在更新</button>
+              </span>
             </div>
           </div>
         </div>

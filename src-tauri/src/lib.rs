@@ -103,6 +103,12 @@ pub fn run() {
                         .build(),
                 )?;
             }
+            // 自动更新。装在 setup 里而不是跟其它插件排在一起，是因为它只对桌面成立，
+            // `#[cfg(desktop)]` 在链式调用中间会把整条 builder 的类型切开。
+            // 前端什么时候去查、查到了怎么问用户，全在 src/update.ts；这里只负责把能力挂上。
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
             Ok(())
         })
         .run(tauri::generate_context!())
