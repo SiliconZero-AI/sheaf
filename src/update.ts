@@ -79,6 +79,7 @@ export interface UpdatePromptUi {
   mask: HTMLElement;
   box: HTMLElement;
   body: HTMLElement;
+  notes: HTMLElement;
   close: HTMLButtonElement;
   later: HTMLButtonElement;
   now: HTMLButtonElement;
@@ -91,10 +92,44 @@ export interface UpdatePromptUi {
 export interface UpdatePromptText {
   /** 「Sheaf 0.1.4 可用，你现在装的是 0.1.3」 */
   body: (from: string, to: string) => string;
+  /**
+   * 这一版改了什么。由调用方按当前界面语言从 latest.json 里挑出中文或英文那份——
+   * 这个模块不认识 i18n，也不该认识。
+   */
+  notes: (update: Update) => string;
   /** 「正在下载… 3.2 MB / 8.7 MB」 */
   progress: (received: string, total: string | null) => string;
   blocked: Record<BlockReason, string>;
   failed: string;
+}
+
+/**
+ * 把 CHANGELOG 抽出来的纯文本画成节点。
+ *
+ * 一律走 textContent：这段文字是从网上下来的，虽然签名保证了它没被人动过手脚，
+ * 但「远程内容用 innerHTML」这个习惯本身就不该有。
+ * 行首「- 」的画成条目，其余画成段落——格式约定见 scripts/release-notes.mjs。
+ */
+export function renderNotes(target: HTMLElement, text: string): void {
+  target.textContent = "";
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  let list: HTMLUListElement | null = null;
+  for (const line of lines) {
+    if (line.startsWith("- ")) {
+      if (!list) {
+        list = document.createElement("ul");
+        target.append(list);
+      }
+      const li = document.createElement("li");
+      li.textContent = line.slice(2);
+      list.append(li);
+    } else {
+      list = null;
+      const p = document.createElement("p");
+      p.textContent = line;
+      target.append(p);
+    }
+  }
 }
 
 /**
@@ -131,6 +166,10 @@ export class UpdatePrompt {
     this.update = update;
     this.busy = false;
     this.ui.body.textContent = this.text().body(update.currentVersion, update.version);
+    // 说明可能是空的（清单里没带），那就把整块藏掉，别留一片空白
+    const notes = this.text().notes(update).trim();
+    this.ui.notes.hidden = notes === "";
+    if (notes) renderNotes(this.ui.notes, notes);
     this.ui.progress.hidden = true;
     this.ui.blocked.hidden = true;
     this.ui.now.disabled = false;

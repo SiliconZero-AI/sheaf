@@ -7,6 +7,7 @@ Sheaf can now update itself.
 - **New versions install themselves.** Sheaf checks once shortly after it starts and, when a newer version exists, asks whether to install it. One click downloads it, installs it, and reopens Sheaf where you were. No more visiting the website to find an installer.
 - **The check never gets in your way.** It runs quietly in the background — if you are offline, or the check fails, Sheaf says nothing at all. You can also check on demand from the Help panel, which always tells you the result.
 - **Your draft is written to disk before anything is installed.** Installing restarts Sheaf, so it saves first. If the draft cannot be saved — an outside change you have not resolved, a file deleted from disk, a failed save — the update stops and says which one it is, instead of restarting on top of your work.
+- **The prompt tells you what changed.** It lists this release's notes, in your interface language, so you know what you are installing before you agree to it.
 - Your folders and reading positions survive the update.
 
 ## 0.1.3 — 2026-08-25

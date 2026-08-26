@@ -1664,6 +1664,44 @@ body {
   cursor: default;
 }
 
+/* 这一版改了什么。条目可能有五六条，给一个上限让框不至于顶到屏幕外；
+   超了就在这块里自己滚，框本身的布局不动 */
+.update-notes {
+  max-height: 190px;
+  overflow-y: auto;
+  margin-top: 14px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.update-notes[hidden] {
+  display: none;
+}
+
+.update-notes p {
+  margin: 0 0 7px;
+  font: 400 12.5px/1.65 var(--font-ui);
+  color: var(--ink-2);
+}
+
+.update-notes ul {
+  margin: 0;
+  padding-left: 17px;
+}
+
+.update-notes li {
+  margin-bottom: 5px;
+  font: 400 12.5px/1.65 var(--font-ui);
+  color: var(--ink-2);
+}
+
+.update-notes li:last-child,
+.update-notes p:last-child {
+  margin-bottom: 0;
+}
+
 .update-progress {
   display: flex;
   align-items: center;

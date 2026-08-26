@@ -17,7 +17,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "check-versions": "node scripts/check-versions.mjs",
-    "test": "node scripts/check-versions.mjs && node test/run.cjs",
+    "test": "node scripts/check-versions.mjs && node test/release-notes.test.mjs && node test/run.cjs",
     "tauri": "tauri"
   },
   "dependencies": {

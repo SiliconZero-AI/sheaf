@@ -136,6 +136,7 @@ const dom = {
   updateMask: need<HTMLDivElement>("#update-mask"),
   updateBox: need<HTMLDivElement>("#update-box"),
   updateBody: need<HTMLParagraphElement>("#update-body"),
+  updateNotes: need<HTMLDivElement>("#update-notes"),
   updateClose: need<HTMLButtonElement>("#update-close"),
   updateLater: need<HTMLButtonElement>("#update-later"),
   updateNow: need<HTMLButtonElement>("#update-now"),
@@ -752,11 +753,25 @@ async function checkExternalChange(): Promise<void> {
 //
 // 判断逻辑（能不能装、为什么不能）在 src/update.ts，有测试。这里只负责接线。
 
+/**
+ * 从清单里挑出这一版的改动说明。
+ *
+ * `notes` 是更新器的官方字段（英文），`notesZh` 是我们自己加在 latest.json 里的，
+ * 官方 API 不认识它，但整份原始 JSON 通过 `rawJson` 暴露给了 JS 侧。
+ * 中文界面优先中文那份；清单是旧格式（没有 notesZh）就退回英文，不至于一片空白。
+ */
+function pickNotes(update: Update): string {
+  const zh = update.rawJson?.notesZh;
+  if (currentLang() === "zh" && typeof zh === "string" && zh.trim()) return zh;
+  return update.body ?? "";
+}
+
 const updatePrompt = new UpdatePrompt(
   {
     mask: dom.updateMask,
     box: dom.updateBox,
     body: dom.updateBody,
+    notes: dom.updateNotes,
     close: dom.updateClose,
     later: dom.updateLater,
     now: dom.updateNow,
@@ -767,6 +782,7 @@ const updatePrompt = new UpdatePrompt(
   },
   () => ({
     body: t().update.body,
+    notes: pickNotes,
     progress: t().update.progress,
     blocked: {
       conflict: t().update.blockedConflict,
