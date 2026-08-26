@@ -13,6 +13,7 @@ const args = [
   "src/images.ts",
   "src/fs.ts",
   "src/anchor.ts",
+  "src/ir-repair.ts",
   "src/update.ts",
   "src/vite-env.d.ts",
   "--outDir",
@@ -50,6 +51,8 @@ console.log("");
 require("./anchor.test.cjs");
 console.log("");
 require("./watch-rules.test.cjs");
+console.log("");
+require("./ir-repair.test.cjs");
 console.log("");
 require("./update.test.cjs");
 console.log("");

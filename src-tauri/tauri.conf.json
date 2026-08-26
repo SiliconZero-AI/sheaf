@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Sheaf",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "identifier": "com.siliconzero.sheaf",
   "build": {
     "frontendDist": "../dist",
@@ -20,7 +20,8 @@
         "center": true,
         "resizable": true,
         "dragDropEnabled": false,
-        "fullscreen": false
+        "fullscreen": false,
+        "zoomHotkeysEnabled": true
       }
     ],
     "security": {

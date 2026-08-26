@@ -89,6 +89,8 @@ export interface Dict {
     shortcutGlobalFind: string;
     shortcutToggleFiles: string;
     shortcutToggleOutline: string;
+    shortcutZoom: string;
+    shortcutZoomReset: string;
     versionLabel: string;
   };
   tree: {

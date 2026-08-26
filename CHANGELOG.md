@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.5 — 2026-08-26
+
+Formatting now shows up the moment you apply it, and you can make the text bigger.
+
+- **Bold, italic, strikethrough and links render on the spot.** Selecting text and clicking the toolbar button (or pressing `Ctrl+B` / `Ctrl+I` / `Ctrl+D` / `Ctrl+K`) used to leave the raw Markdown sitting on the page — `~~like this~~` — until you typed somewhere else. Now you see the finished result immediately, which is what a single-canvas editor is supposed to do.
+- **You can zoom the text.** `Ctrl` and `+` or `-` makes everything bigger or smaller, `Ctrl+0` puts it back, and holding `Ctrl` while scrolling works too. Useful when a draft is dense or the screen is far away.
+
 ## 0.1.4 — 2026-08-26
 
 Sheaf can now update itself.
