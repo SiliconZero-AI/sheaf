@@ -1624,6 +1624,24 @@ body {
 
 /* 帮助面板里的手动检查。它跟版本号并排，不该比版本号还重——
    真正需要被看见的是启动时自己弹出来的那个框，这里只是「我现在就想知道」的出口 */
+/* 检查结果就近显示。放这里而不是走 editor.tip()：帮助面板盖在编辑器上面，
+   Vditor 的提示条会落在用户看不见的地方（2026-08-25 真机撞到过）。
+   靠 margin-left:auto 把它和按钮一起推到右边，版本号留在左边 */
+.help-check-status {
+  margin-left: auto;
+  font: 400 12px/1.5 var(--font-ui);
+  color: var(--ink-3);
+}
+
+.help-check-status[hidden] {
+  display: none;
+}
+
+/* 有状态文字时按钮不再自己抢那个 auto，否则两者中间会被撑开一大段 */
+.help-check-status:not([hidden]) + .help-check {
+  margin-left: 6px;
+}
+
 .help-check {
   appearance: none;
   border: 0;

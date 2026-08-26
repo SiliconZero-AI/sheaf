@@ -132,6 +132,7 @@ const dom = {
   conflictKeepDisk: need<HTMLButtonElement>("#conflict-keep-disk"),
   conflictLater: need<HTMLButtonElement>("#conflict-later"),
   helpCheck: need<HTMLButtonElement>("#help-check"),
+  helpCheckStatus: need<HTMLSpanElement>("#help-check-status"),
   updateMask: need<HTMLDivElement>("#update-mask"),
   updateBox: need<HTMLDivElement>("#update-box"),
   updateBody: need<HTMLParagraphElement>("#update-body"),
@@ -827,24 +828,43 @@ async function checkUpdateOnStart(): Promise<void> {
   if (result.kind === "update") updatePrompt.show(result.update);
 }
 
+/** 帮助面板里的检查结果。写在面板自己身上，不走 editor.tip() —— 理由见 index.html 那处注释 */
+let checkStatusTimer = 0;
+
+/**
+ * `sticky` 用于「正在检查更新…」这种过渡态：它得一直挂着直到有结果。
+ * 跟终态一样定时消失的话，网络慢一点就会中途自己闪没、过一会儿又冒出个结论，
+ * 看着像刚才那次点击失败了。
+ */
+function showCheckStatus(text: string, sticky = false): void {
+  window.clearTimeout(checkStatusTimer);
+  dom.helpCheckStatus.textContent = text;
+  dom.helpCheckStatus.hidden = false;
+  if (sticky) return;
+  checkStatusTimer = window.setTimeout(() => {
+    dom.helpCheckStatus.hidden = true;
+  }, 6000);
+}
+
 /** 帮助面板里那个按钮。跟启动检查相反，三种结局都要有反馈——用户明确点了，没反应比报错更糟 */
 async function checkUpdateManually(): Promise<void> {
   dom.helpCheck.disabled = true;
-  dom.helpCheck.textContent = t().update.checking;
+  showCheckStatus(t().update.checking, true);
   try {
     const result = await checkForUpdate();
     if (result.kind === "update") {
+      // 有新版才关面板：更新框是模态的，两个一起开会打架
+      dom.helpCheckStatus.hidden = true;
       help.hide();
       updatePrompt.show(result.update);
     } else if (result.kind === "current") {
-      editor.tip(t().update.upToDate, 3000);
+      showCheckStatus(t().update.upToDate);
     } else {
       console.warn("[Sheaf] 查更新失败", result.error);
-      editor.tip(t().update.checkFailed, 4000);
+      showCheckStatus(t().update.checkFailed);
     }
   } finally {
     dom.helpCheck.disabled = false;
-    dom.helpCheck.textContent = t().update.checkLabel;
   }
 }
 

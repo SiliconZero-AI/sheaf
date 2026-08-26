@@ -309,6 +309,10 @@
               <span class="help-version" id="help-version"></span>
               <!-- 手动检查的落脚点。启动时那次检查是静默的（断网不该弹错误框），
                    所以必须有一个「我现在就想知道」的入口，且它的结果一律可见 -->
+              <!-- 结果写在这里、不走 editor.tip()：这个面板正盖在编辑器上面，
+                   Vditor 的提示条会弹在用户看不见的地方。2026-08-25 真机撞到过——
+                   点了「检查更新」看着像没反应，其实请求发了、结论也出了，只是被这块面板挡住 -->
+              <span class="help-check-status" id="help-check-status" hidden></span>
               <button type="button" class="help-check" id="help-check" data-i18n="update.checkLabel">检查更新</button>
             </div>
           </div>
