@@ -73,12 +73,16 @@ export interface Dict {
     highlightPlainMd: string;
     highlightNative: string;
     highlightTools: string;
+    /** 外部改动实时同步：本项目已锁定的产品定位，帮助面板里得说得出来 */
+    highlightLiveSync: string;
     howtoTitle: string;
     howtoOpenFolder: string;
     howtoAutosave: string;
     howtoImages: string;
     howtoTable: string;
     howtoExport: string;
+    /** 每篇记住上次读到哪 */
+    howtoResume: string;
     shortcutsTitle: string;
     shortcutFind: string;
     shortcutGlobalFind: string;
