@@ -11,6 +11,7 @@ const {
   normalizePath,
   samePath,
   hitsWatchedFile,
+  affectsTree,
   missingStep,
   MISSING_GRACE_MS,
   MISSING_RETRY_MS,
@@ -49,6 +50,17 @@ check("临时文件改名盖过来", hitsWatchedFile(["D:/notes/a.md.tmp", "D:/n
 check("只动了别的文件", hitsWatchedFile(["D:/notes/b.md", "D:/notes/c.md"], open), false);
 check("没开文件时不管", hitsWatchedFile(["D:/notes/a.md"], null), false);
 check("空事件", hitsWatchedFile([], open), false);
+
+console.log("\n=== 哪些变动值得重扫左栏 ===");
+// 挡的是真实开销：AI 落盘路上甩出的临时文件和插图，每个都触发全目录递归扫描的话，
+// 连着写十个文件就是十次扫盘
+check("稿子本身", affectsTree("D:/notes/a.md"), true);
+check("大写扩展名也认", affectsTree("D:/notes/A.MARKDOWN"), true);
+check("临时文件不算", affectsTree("D:/notes/a.md.tmp"), false);
+check("插图不算", affectsTree("D:/notes/images/x.png"), false);
+// 目录要算：新建/删除文件夹得反映到左栏，而目录名没有扩展名
+check("目录算", affectsTree("D:/notes/章节"), true);
+check("反斜杠路径同样处理", affectsTree("D:\\notes\\a.md"), true);
 
 console.log("\n=== 看不见文件时先别下结论 ===");
 check("刚发现不见：等", missingStep(0), { verdict: "wait", retryInMs: MISSING_RETRY_MS });

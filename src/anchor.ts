@@ -25,7 +25,14 @@ export interface DocAnchor {
 /** 文档开头。找不回来时一律退到这里——不是底部、不是原地不动 */
 export const TOP_ANCHOR: DocAnchor = { heading: null, ordinal: 0, index: -1, offset: 0 };
 
-export const HEADING_SELECTOR = "h1, h2, h3, h4, h5, h6";
+/**
+ * 只认顶层标题，跟 main.ts 的 headingElements()（大纲的数据源）用同一个口径。
+ * 不加 `:scope >` 的话，引用块和列表里嵌的标题也会被数进来，
+ * 于是锚点的「第 N 个标题」和大纲的第 N 条对不上——那正是 outline.ts
+ * 开头那条铁律要防的错位。
+ */
+export const HEADING_SELECTOR =
+  ":scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6";
 
 /**
  * 比标题时先归一化空白：渲染出来的标题里可能夹着换行和连续空格，

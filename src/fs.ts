@@ -486,6 +486,23 @@ export function hitsWatchedFile(eventPaths: string[], target: string | null): bo
   return eventPaths.some((path) => samePath(path, target));
 }
 
+/**
+ * 这个路径的变动会不会改变左栏的长相。
+ *
+ * 单独成一个函数是因为它挡的是一笔真实开销：AI 落盘路上会甩出临时文件
+ * （`稿子.md.tmp`）和插图（`images/x.png`），每一个都触发一次全目录递归重扫的话，
+ * AI 连着写十个文件就是十次扫盘。左栏本来也只列 `.md`。
+ *
+ * 目录要算进来——新建/删除文件夹得反映到左栏，而目录名没有扩展名。
+ * 判「没有扩展名就是目录」会把 `LICENSE` 这类无扩展名文件也算进来，
+ * 代价只是多扫一次；反过来漏判目录，用户新建的文件夹就不出现，那才是 bug。
+ */
+export function affectsTree(path: string): boolean {
+  const name = path.replace(/\\/g, "/").split("/").pop() ?? "";
+  if (/\.(md|markdown)$/i.test(name)) return true;
+  return name !== "" && !name.includes(".");
+}
+
 // 文件忽然 stat 不到了，不代表它真没了——「写临时文件再改名」那一瞬间有个真实空窗：
 // 旧的已经拿走、新的还没放上。这时候下结论就会把用户正开着的稿子判成「文件没了」，
 // 是这个功能最容易翻车的地方。所以看不见时先等一等，等够了才认。
