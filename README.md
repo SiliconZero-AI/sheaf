@@ -19,6 +19,7 @@ Tested from start to finish with real writing. Packaged as a Windows installer (
 - 💾 **Autosave + three export formats**: writes to disk two seconds after you stop typing; export as plain `.md`, `.html`, or print to PDF
 - 🔀 **Safe alongside other tools**: edit a file outside Sheaf — in an AI tool, another editor, a sync folder — and the open draft updates on its own, with no need to switch away and back, and without overwriting what changed. Rapid repeated writes are batched into one calm update rather than a flicker. If you have unsaved edits too, autosave pauses and shows both versions side by side with their length and timestamps so you can choose
 - 📖 **Every draft remembers where you left off**: switch drafts, or close and reopen Sheaf, and you land back at the same place and cursor position. Your spot is tracked by the nearest heading, so text added above where you are reading does not push you off it
+- 🔎 **Zoom the text**: `Ctrl` + `+` / `-` to resize everything, `Ctrl+0` to reset, `Ctrl` + scroll wheel works too — for dense drafts or a screen that sits far away
 - 🌗 **Light/dark themes**: follows the system by default, lock it from the top bar
 - 🌐 **Bilingual interface**: switch between Chinese and English instantly, no reload
 - ⬆️ **Updates itself**: when a new version exists, Sheaf tells you at startup and lists what changed. One click downloads, installs, and reopens it — your folders and reading positions come through untouched
