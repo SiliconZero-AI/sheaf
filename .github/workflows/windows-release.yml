@@ -131,10 +131,15 @@ jobs:
 
           # 抽不出说明就停。宁可不发，也别推一个「有新版可用」却说不出改了什么的更新。
           # 最常见的原因是 CHANGELOG 里那一段标题还写着「Unreleased / 未发布」没改成版本号。
+          # -join 不能省：PowerShell 把原生命令的多行输出拆成字符串数组，
+          # 不拼回去的话 ConvertTo-Json 会把 notes 写成 JSON 数组，而更新器把它当字符串反序列化——
+          # 整份清单解析失败，所有用户的更新检查直接报错。2026-08-26 发 0.1.4 时在草稿阶段撞到过。
           $notesEn = node scripts/release-notes.mjs $version CHANGELOG.md
           if ($LASTEXITCODE -ne 0) { throw "CHANGELOG.md 里抽不出 $version 的更新说明" }
+          $notesEn = $notesEn -join "`n"
           $notesZh = node scripts/release-notes.mjs $version CHANGELOG.zh-CN.md
           if ($LASTEXITCODE -ne 0) { throw "CHANGELOG.zh-CN.md 里抽不出 $version 的更新说明" }
+          $notesZh = $notesZh -join "`n"
 
           $manifest = [ordered]@{
             version  = $version
@@ -150,7 +155,10 @@ jobs:
           }
           $manifestPath = Join-Path $dir "latest.json"
           $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path $manifestPath -Encoding utf8
-          Write-Output "latest.json for $version -> $($installer.Name)"
+          # 生成完立刻验形状。这份清单的错法全是静默的——Release 页面看着一切正常，
+          # 用户那边的更新检查却直接失败。不合格就中止，宁可不发
+          node scripts/check-manifest.mjs $manifestPath $version "${{ github.ref_name }}"
+          if ($LASTEXITCODE -ne 0) { throw "latest.json 校验不过，中止发版" }
 
           gh release create "${{ github.ref_name }}" "$($installer.FullName)" "$stable" "$sigPath" "$manifestPath" "$dir/SHA256SUMS.txt" --title "Sheaf ${{ github.ref_name }}" --notes-file release-notes.md --draft
           Write-Output "Draft release ${{ github.ref_name }} created. Review it on GitHub, then click Publish release."
