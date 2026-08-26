@@ -59,16 +59,17 @@ jobs:
       - name: Verify the updater signature was produced
         shell: pwsh
         run: |
-          $sig = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe.sig -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($null -eq $sig) {
-            throw "No .sig next to the installer. Check TAURI_SIGNING_PRIVATE_KEY / _PASSWORD secrets."
+          $installer = Get-ChildItem src-tauri/target/release/bundle/nsis/*_x64-setup.exe | Select-Object -First 1
+          if ($null -eq $installer) { throw "NSIS installer was not generated" }
+          if (-not (Test-Path "$($installer.FullName).sig")) {
+            throw "No .sig next to $($installer.Name). Check TAURI_SIGNING_PRIVATE_KEY / _PASSWORD secrets."
           }
-          Write-Output "Updater signature: $($sig.Name)"
+          Write-Output "Updater signature: $($installer.Name).sig"
 
       - name: Generate SHA-256 checksum
         shell: pwsh
         run: |
-          $installer = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $installer = Get-ChildItem src-tauri/target/release/bundle/nsis/*_x64-setup.exe | Select-Object -First 1
           if ($null -eq $installer) {
             throw "NSIS installer was not generated"
           }
@@ -81,8 +82,8 @@ jobs:
         with:
           name: sheaf-windows-x64-${{ github.ref_name }}
           path: |
-            src-tauri/target/release/bundle/nsis/*-setup.exe
-            src-tauri/target/release/bundle/nsis/*-setup.exe.sig
+            src-tauri/target/release/bundle/nsis/*_x64-setup.exe
+            src-tauri/target/release/bundle/nsis/*_x64-setup.exe.sig
             src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
@@ -102,7 +103,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $dir = "src-tauri/target/release/bundle/nsis"
-          $installer = Get-ChildItem "$dir/*-setup.exe" | Select-Object -First 1
+          $installer = Get-ChildItem "$dir/*_x64-setup.exe" | Select-Object -First 1
           if ($null -eq $installer) { throw "NSIS installer was not found" }
           $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           # 再复制一份不带版本号的：官网的下载按钮指向
@@ -119,8 +120,11 @@ jobs:
           # url 用**打了 tag 的固定地址**，不用 /releases/latest/download/：签名是对
           # 具体那串字节算的，tag 地址永远指向跟这份清单同一次构建的产物，对不上是不可能的。
           # notes 只放 CHANGELOG 的地址而不塞正文——更新框是双语的，往里灌一段英文说明会读着别扭。
-          $sig = Get-ChildItem "$dir/*-setup.exe.sig" | Select-Object -First 1
-          if ($null -eq $sig) { throw "No .sig for the installer; refusing to publish an unupdatable release" }
+          # .sig 必须从 $installer 推出来，绝不能自己再 glob 一次：两次独立匹配可能落到
+          # 不同版本的文件上，配出「A 版的签名 + B 版的下载地址」的清单——那样每个用户的
+          # 更新都会在签名校验处失败，而 Release 本身看着一切正常。本地实跑撞到过这个。
+          $sigPath = "$($installer.FullName).sig"
+          if (-not (Test-Path $sigPath)) { throw "No .sig for $($installer.Name); refusing to publish an unupdatable release" }
           $version = "${{ github.ref_name }}".TrimStart("v")
           $manifest = [ordered]@{
             version  = $version
@@ -128,7 +132,7 @@ jobs:
             pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
             platforms = [ordered]@{
               "windows-x86_64" = [ordered]@{
-                signature = (Get-Content $sig.FullName -Raw).Trim()
+                signature = (Get-Content $sigPath -Raw).Trim()
                 url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$($installer.Name)"
               }
             }
@@ -137,5 +141,5 @@ jobs:
           $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path $manifestPath -Encoding utf8
           Write-Output "latest.json for $version -> $($installer.Name)"
 
-          gh release create "${{ github.ref_name }}" "$($installer.FullName)" "$stable" "$($sig.FullName)" "$manifestPath" "$dir/SHA256SUMS.txt" --title "Sheaf ${{ github.ref_name }}" --notes-file release-notes.md --draft
+          gh release create "${{ github.ref_name }}" "$($installer.FullName)" "$stable" "$sigPath" "$manifestPath" "$dir/SHA256SUMS.txt" --title "Sheaf ${{ github.ref_name }}" --notes-file release-notes.md --draft
           Write-Output "Draft release ${{ github.ref_name }} created. Review it on GitHub, then click Publish release."
