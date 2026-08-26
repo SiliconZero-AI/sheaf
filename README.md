@@ -21,11 +21,14 @@ Tested from start to finish with real writing. Packaged as a Windows installer (
 - 📖 **Every draft remembers where you left off**: switch drafts, or close and reopen Sheaf, and you land back at the same place and cursor position. Your spot is tracked by the nearest heading, so text added above where you are reading does not push you off it
 - 🌗 **Light/dark themes**: follows the system by default, lock it from the top bar
 - 🌐 **Bilingual interface**: switch between Chinese and English instantly, no reload
+- ⬆️ **Updates itself**: when a new version exists, Sheaf tells you at startup and lists what changed. One click downloads, installs, and reopens it — your folders and reading positions come through untouched
 - 🪟 **Windows installer**: double-click to install, launch from the Start menu, zero external requests so it works offline, associates `.md` files (double-click one to open it directly in Sheaf), remembers your folders and last-open draft when you relaunch
 
 ## 📥 Download
 
 Grab the latest Windows installer from [Releases](https://github.com/SiliconZero-AI/sheaf/releases), double-click to install, then find "Sheaf" in the Start menu. Works offline.
+
+**You only need to do this once.** From 0.1.4 on, Sheaf finds and installs new versions itself. If you are on 0.1.3 or earlier, download once here and it takes over from there.
 
 macOS / Linux builds are on the roadmap below.
 
@@ -86,7 +89,7 @@ The writing surface is [Vditor](https://github.com/Vanessa219/vditor) (MIT).
 
 ## Code signing policy
 
-Sheaf v0.1.0 is currently unsigned. See the [Code signing policy](CODE_SIGNING_POLICY.md) for the planned verified build, review, and signing controls.
+Sheaf is currently unsigned. See the [Code signing policy](CODE_SIGNING_POLICY.md) for the planned verified build, review, and signing controls.
 
 ## 📜 License
 
