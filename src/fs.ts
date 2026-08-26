@@ -503,6 +503,28 @@ export function affectsTree(path: string): boolean {
   return name !== "" && !name.includes(".");
 }
 
+// AI 流式落盘时，一秒能写好几次。每落一次就整篇重渲染一次，画面就是在抖
+// （2026-08-25 真机实测：7 秒内触发约 46 次重载，肉眼可见连续闪动）。
+//
+// 光把「攒多久再处理」的窗口调大治不了本：真实写入间隔不固定，窗口调多大都能被绕过。
+// 靠谱的判据是磁盘自己——**连续安静一小会儿**才算这一轮写完。
+// 副作用还是好的：AI 写到一半的内容本来也不该给人看。
+
+/** 磁盘连续这么久没再变，就算这一轮写完了 */
+export const SETTLE_QUIET_MS = 250;
+/** 兜底上限：对面一直写个不停，也不能让用户永远看着旧内容 */
+export const SETTLE_MAX_MS = 5000;
+
+/**
+ * 已经等了 elapsedMs 还在等磁盘安静，现在该继续等还是直接显示。
+ * 跟 missingStep 同构：判定拆出来单独测，等待本身留在调用方。
+ */
+export function settleStep(elapsedMs: number): { verdict: "wait" | "go"; waitMs: number } {
+  if (elapsedMs >= SETTLE_MAX_MS) return { verdict: "go", waitMs: 0 };
+  // 最后一次别睡过头，正好停在上限
+  return { verdict: "wait", waitMs: Math.min(SETTLE_QUIET_MS, SETTLE_MAX_MS - elapsedMs) };
+}
+
 // 文件忽然 stat 不到了，不代表它真没了——「写临时文件再改名」那一瞬间有个真实空窗：
 // 旧的已经拿走、新的还没放上。这时候下结论就会把用户正开着的稿子判成「文件没了」，
 // 是这个功能最容易翻车的地方。所以看不见时先等一等，等够了才认。

@@ -13,6 +13,9 @@ const {
   hitsWatchedFile,
   affectsTree,
   missingStep,
+  settleStep,
+  SETTLE_QUIET_MS,
+  SETTLE_MAX_MS,
   MISSING_GRACE_MS,
   MISSING_RETRY_MS,
   positionKey,
@@ -69,6 +72,16 @@ check("等了一半：继续等", missingStep(1000), { verdict: "wait", retryInM
 check("快到点了：只等到点为止", missingStep(MISSING_GRACE_MS - 100), { verdict: "wait", retryInMs: 100 });
 check("到点了：认定没了", missingStep(MISSING_GRACE_MS), { verdict: "gone", retryInMs: 0 });
 check("超过了：认定没了", missingStep(MISSING_GRACE_MS + 5000), { verdict: "gone", retryInMs: 0 });
+
+console.log("\n=== 对面还在连着写时先别刷 ===");
+// 2026-08-25 真机翻车过：靠「攒够多少毫秒」判写完，7 秒流式写入刷了约 46 次，画面肉眼可见地抖。
+// 改成看磁盘自己安静没安静，这个函数只管「还能再等多久」
+check("刚开始等", settleStep(0), { verdict: "wait", waitMs: SETTLE_QUIET_MS });
+check("等到一半", settleStep(2000), { verdict: "wait", waitMs: SETTLE_QUIET_MS });
+// 对面一直写个不停也不能永远不显示，到上限就先刷一次
+check("快到上限：只等到上限为止", settleStep(SETTLE_MAX_MS - 80), { verdict: "wait", waitMs: 80 });
+check("到上限：先刷再说", settleStep(SETTLE_MAX_MS), { verdict: "go", waitMs: 0 });
+check("超过上限", settleStep(SETTLE_MAX_MS + 9999), { verdict: "go", waitMs: 0 });
 
 console.log("\n=== 位置记在哪个键上 ===");
 check("工作区里的篇", positionKey({ kind: "space", index: 1, path: "章节/第三章.md" }), "space:1:章节/第三章.md");

@@ -18,8 +18,25 @@ import { watch, type UnwatchFn } from "@tauri-apps/plugin-fs";
 
 /** 传给官方 watch() 的值。不是默认的 2000 */
 const DELAY_MS = 150;
-/** 我们自己这一层的合并窗口：一批事件只惊动上层一次 */
-const COALESCE_MS = 120;
+/**
+ * 我们自己这一层的合并窗口：一批事件只惊动上层一次。
+ *
+ * 必须明显大于 DELAY_MS——Rust 侧是每 DELAY_MS 攒一批送过来，
+ * 这个窗口要是比批次间隔还短，每一批都会独立触发一次，合并等于没做
+ * （第一次实现取 120 就是这么翻的车，7 秒的流式写入刷了约 46 次，画面肉眼可见地抖）。
+ *
+ * 注意这只是第一道。真正扛住流式写入的是 main.ts 的 waitForQuiet——
+ * 那个判据是磁盘状态本身，不靠猜窗口。
+ */
+const COALESCE_MS = 300;
+/**
+ * 扣留上限。尾部合并有个要命的副作用：事件一直来，计时器就一直被重置，于是一次都不放行。
+ * 2026-08-25 真机实测：40ms 一次连写 20 秒，整整 20 秒一条都没往下报，
+ * 用户盯着旧内容干等——「AI 落盘、旁边立刻显示」直接反过来了。
+ * 下游那层「最多等 5 秒就先刷一次」的兜底也因此没机会跑，是被这里饿死的。
+ * 所以扣满这个时间必须放行一次，不管事件还在不在来。
+ */
+const MAX_HOLD_MS = 1000;
 
 export interface WatchTarget {
   /** 要盯的目录绝对路径 */
@@ -36,6 +53,8 @@ export class DirWatcher {
   private stops: UnwatchFn[] = [];
   private pending = new Set<string>();
   private timer = 0;
+  /** 这一批最早那个事件是什么时候到的，用来卡扣留上限。0 = 手上没扣着东西 */
+  private heldSince = 0;
   /** 重挂时用来作废上一轮还没回来的 watch()，否则旧监听会漏在外面永远关不掉 */
   private generation = 0;
 
@@ -66,6 +85,7 @@ export class DirWatcher {
     window.clearTimeout(this.timer);
     this.timer = 0;
     this.pending.clear();
+    this.heldSince = 0;
     for (const stop of this.stops) {
       try {
         stop();
@@ -79,13 +99,19 @@ export class DirWatcher {
   /** 攒一批再往上报（坑二）。AI 流式写入一秒好几次，逐条上报就是画面在抖 */
   private collect(paths: string[]): void {
     for (const path of paths) this.pending.add(path);
+    if (this.heldSince === 0) this.heldSince = Date.now();
     window.clearTimeout(this.timer);
-    this.timer = window.setTimeout(() => {
-      const batch = [...this.pending];
-      this.pending.clear();
-      this.timer = 0;
-      if (batch.length > 0) this.onChange(batch);
-    }, COALESCE_MS);
+    // 扣满上限就立刻放行：再等下去就是「一直有人写、我们就一直不显示」
+    const wait = Math.max(0, Math.min(COALESCE_MS, this.heldSince + MAX_HOLD_MS - Date.now()));
+    this.timer = window.setTimeout(() => this.flush(), wait);
+  }
+
+  private flush(): void {
+    const batch = [...this.pending];
+    this.pending.clear();
+    this.timer = 0;
+    this.heldSince = 0;
+    if (batch.length > 0) this.onChange(batch);
   }
 }
 

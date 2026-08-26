@@ -48,6 +48,7 @@ import {
   affectsTree,
   samePath,
   missingStep,
+  settleStep,
   positionKey,
   recallPositions,
   rememberPosition,
@@ -112,6 +113,7 @@ const dom = {
   helpClose: need<HTMLButtonElement>("#help-close"),
   helpVersion: need<HTMLSpanElement>("#help-version"),
   conflictMask: need<HTMLDivElement>("#conflict-mask"),
+  conflictBox: need<HTMLDivElement>("#conflict-box"),
   conflictFile: need<HTMLElement>("#conflict-file"),
   conflictMineMeta: need<HTMLSpanElement>("#conflict-mine-meta"),
   conflictMineHead: need<HTMLSpanElement>("#conflict-mine-head"),
@@ -666,10 +668,22 @@ function renderConflictBody(): void {
   dom.conflictDiskHead.textContent = facts.diskHead || dict.emptyHead;
 }
 
+/**
+ * 弹框时焦点落在**对话框本身**，绝不落在某个选项按钮上。
+ *
+ * 2026-08-25 真机翻车过：原先是 conflictKeepMine.focus()，
+ * 而这批把「切回窗口才发现冲突」改成了「外面一改就弹」——
+ * 用户正连续打字时框弹出来，下一个空格/回车正好落在那个已聚焦的按钮上，
+ * 等于替他按了「保留我的、覆盖磁盘」。他一个字都没看见就把外部改动丢了。
+ * 这正是这个框当初返工要消灭的东西：盲选。
+ *
+ * 焦点给容器（tabindex="-1"）：Esc 照常关，Tab 照常能走到按钮，
+ * 但必须是一次**明确的**操作才选得动。
+ */
 function showConflict(): void {
   renderConflictBody();
   dom.conflictMask.hidden = false;
-  dom.conflictKeepMine.focus();
+  dom.conflictBox.focus();
 }
 
 function hideConflict(): void {
@@ -724,6 +738,34 @@ const watcher = new DirWatcher((paths) => void onDiskEvents(paths));
 /** 当前这篇在磁盘上的绝对路径。浏览器句柄没有路径，返回 null */
 function currentPath(): string | null {
   return state.file ? loosePathOf(state.file) : null;
+}
+
+/** 正在等磁盘安静。同一时刻只等一轮，否则并发的等待会各刷各的 */
+let settling = false;
+
+/**
+ * 等到磁盘连续一小会儿没再变，才认为对面写完了。
+ *
+ * 判据是磁盘状态本身，不是「攒够多少毫秒」——真实写入间隔不固定，
+ * 攒多久都可能正好被绕过（第一次实现就是这么翻的车：JS 侧攒 120ms，
+ * 而事件批次约 150ms 一到，等于每批都独立触发一次重渲染）。
+ *
+ * 中途用户切了稿就放弃：再等下去也是拿旧路径的状态去决定新稿子的死活。
+ */
+async function waitForQuiet(path: string): Promise<void> {
+  const startedAt = Date.now();
+  let last = await readStamp(state.file);
+  for (;;) {
+    const step = settleStep(Date.now() - startedAt);
+    // 对面一直写个不停也不能永远不显示，到上限就先刷一次，
+    // 后面还有事件的话下一轮再刷
+    if (step.verdict === "go") return;
+    await new Promise((resolve) => window.setTimeout(resolve, step.waitMs));
+    if (!samePath(currentPath(), path)) return;
+    const now = await readStamp(state.file);
+    if (!stampChanged(last, now)) return;
+    last = now;
+  }
 }
 
 /**
@@ -813,7 +855,17 @@ async function syncCurrentFile(startedAt = Date.now()): Promise<void> {
       state.missing = false;
       renderStatus();
     }
-    await guardedCheck();
+    // 对面可能还在连着写（AI 流式落盘）。这时候每来一次事件就整篇重渲染一次，
+    // 画面就是在抖——2026-08-25 真机实测过，7 秒内刷了约 46 次。
+    // 所以先等磁盘安静下来，再一次性显示
+    if (settling) return;
+    settling = true;
+    try {
+      await waitForQuiet(path);
+      await guardedCheck();
+    } finally {
+      settling = false;
+    }
     return;
   }
 
@@ -1728,10 +1780,21 @@ window.addEventListener("focus", () => void guardedCheck());
 dom.conflictKeepMine.addEventListener("click", () => void resolveKeepMine());
 dom.conflictKeepDisk.addEventListener("click", () => void resolveKeepDisk());
 // 「先不决定」只收起对话框，冲突照挂、自动保存照冻——状态栏那行字是回来的入口
-dom.conflictLater.addEventListener("click", () => hideConflict());
-dom.conflictClose.addEventListener("click", () => hideConflict());
+/**
+ * 「先不决定」这一路要把焦点还给正文。
+ * 弹框时焦点被收走了（见 showConflict），不还回去的话用户得先点一下正文才能接着写——
+ * 而他多半正是被这个框打断在半句话中间的。
+ * 只有这三条明确关闭的路才还，setDoc 里那次 hideConflict 不还：换稿子时抢焦点是另一种冒犯。
+ */
+function dismissConflict(): void {
+  hideConflict();
+  if (state.writable) editor.focus();
+}
+
+dom.conflictLater.addEventListener("click", () => dismissConflict());
+dom.conflictClose.addEventListener("click", () => dismissConflict());
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !dom.conflictMask.hidden) hideConflict();
+  if (event.key === "Escape" && !dom.conflictMask.hidden) dismissConflict();
 });
 dom.saveLabel.addEventListener("click", () => {
   if (state.conflict) showConflict();
