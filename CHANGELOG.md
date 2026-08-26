@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+For anyone who edits their drafts with an AI tool while Sheaf is open.
+
+- **Changes made outside Sheaf now show up right away.** You no longer have to switch away and back for Sheaf to notice — save a file from an AI tool or another editor and the open draft updates on its own. Rapid, repeated writes are batched, so a tool that saves several times a second updates the page calmly instead of flickering.
+- **Sheaf stays where you were reading.** When a draft reloads, your place is found by the nearest heading rather than by pixel offset, so text added above where you are reading no longer pushes you off your spot.
+- **Every draft remembers where you left off.** Switch drafts, or close and reopen Sheaf, and you come back to the place and cursor position you left — instead of the top of the file, or the very end.
+- **New files appear in the file list on their own.** A draft created outside Sheaf shows up in the folder without a manual refresh. Sheaf does not switch to it — whatever you are writing stays open.
+- **A draft deleted outside Sheaf keeps its text on screen.** Autosave pauses and the status bar says the file is gone from disk. Press `Ctrl+S` to write it back; Sheaf will not recreate it on its own.
+
 ## 0.1.2 — 2026-08-25
 
 Four small things that were quietly in the way.
