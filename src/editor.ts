@@ -6,6 +6,7 @@ import { safeAlt } from "./images";
 import type { ThemeName } from "./theme";
 import { line } from "./icons";
 import { currentLang, t } from "./i18n";
+import { needsRerender } from "./ir-repair";
 
 /**
  * Vditor 默认从 unpkg 取 lute / 语言包 / 图标，断网和国内网络下就起不来。
@@ -57,6 +58,46 @@ function wrapSelection(editor: Vditor | null, marker: string, placeholder: strin
 }
 
 
+
+/**
+ * 补上 Vditor 少的那一次重解析。
+ *
+ * 加粗 / 斜体 / 删除线 / 链接这四个按钮点完，画布上会先留一串裸语法
+ * （`~~文字~~`、`[文字](https://)`），要等下一次输入才补渲染成效果，
+ * 正面违反单栏 IR「看到的就是最终效果」。根因两种，见 ir-repair.ts。
+ *
+ * 修法刻意不碰 Vditor 的插入逻辑、更不自己写解析器（铁律 2）：
+ * 等它那套跑完、`<wbr>` 已被 setRangeByWbr 清掉、光标复位之后，
+ * 用公开的 insertValue("") 让它把当前块重解析一遍。这时候画布上是干净的
+ * `~~文字~~`，新的 `<wbr>` 落在光标处（在标记之外），Lute 就认了。
+ *
+ * 监听挂在工具栏上、用捕获阶段：快捷键（Ctrl+B/I/D/K）走的是往按钮上派发一个
+ * 不冒泡的 CustomEvent，冒泡阶段的祖先监听器收不到，捕获阶段能收到。
+ * 捕获比 Vditor 自己挂在按钮上的处理器更早，所以要 setTimeout 排到它后面去。
+ *
+ * 没选中文字时插的是一对空标记（`****`，光标停在中间），重解析后仍是裸标记——
+ * 跟 Typora 一致，敲第一个字就渲染出来，是对的，不要去改。
+ */
+function repairInlineMarks(editor: Vditor, toolbar: HTMLElement): void {
+  toolbar.addEventListener(
+    "click",
+    (event) => {
+      const button = (event.target as HTMLElement | null)?.closest?.("[data-type]");
+      if (!button || !needsRerender(button.getAttribute("data-type"), button.classList)) return;
+      // 插入是同步的，但要让 Vditor 自己那套先跑完再动手
+      setTimeout(() => {
+        // 加粗那三个按钮跑完会把选区留在标记之间（`**[一个文]**`）。重解析时新的 `<wbr>`
+        // 是插在 range 的**起点**的，正好又落回「紧贴开标记」那个 Lute 不认的位置。
+        // 先把光标收到选区末尾，`<wbr>` 就落到闭标记前面（`**一个文<wbr>**`），这个位置实测能解析。
+        // 链接那条选区本来就是收起来的（停在括号里等着填 URL），这一步对它是空操作。
+        window.getSelection()?.collapseToEnd();
+        // 插空串不改内容，只为触发 IR 的 input 走一遍 Lute
+        editor.insertValue("");
+      }, 0);
+    },
+    true,
+  );
+}
 
 function mermaidSample(): string {
   return ["", "```mermaid", "graph TD", `  A[${t().editor.mermaidStart}] --> B[${t().editor.mermaidEnd}]`, "```", "", ""].join(
@@ -223,6 +264,9 @@ export function createEditor(root: HTMLElement, hooks: EditorHooks): Vditor {
       },
     ],
     after: () => {
+      const toolbar = root.querySelector<HTMLElement>(".vditor-toolbar");
+      // onReady 会把工具栏整块搬去 #toolbar-slot，得赶在搬走前拿到它（搬家不掉监听器）
+      if (editor && toolbar) repairInlineMarks(editor, toolbar);
       hooks.onReady();
     },
     input: () => {
