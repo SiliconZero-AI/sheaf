@@ -14,11 +14,12 @@ import {
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { t } from "./i18n";
 import { parseAnchor, type DocAnchor } from "./anchor";
+import { isDesktop } from "./env";
+import { parseZoom, stateGet, stateSet } from "./store";
 
-/** 在桌面壳里跑还是在浏览器里跑。Tauri 2 会往 window 上注入 __TAURI_INTERNALS__ */
-export const isDesktop =
-  typeof window !== "undefined" &&
-  (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ !== undefined;
+// 单独一个 env 模块是为了断开循环引用：store 也要判断跑在哪儿，
+// 而 fs 要用 store。从这里再导出一次，上层的 import 路径一个都不用改
+export { isDesktop };
 
 export interface FileHandle {
   readonly kind: "file";
@@ -215,75 +216,32 @@ export async function saveAs(
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-// 库名保持旧值：这是持久化标识，改了等于把已经授权过的文件夹记录全丢掉，
-// 每个工作区都要重新授权一遍。名字换成 Sheaf 不值得让人付这个代价。
-const DB_NAME = "writing-desk";
-const STORE = "handles";
 const ROOT_KEY = "root";
 const ROOTS_KEY = "roots";
 const LAST_FILE_KEY = "last-file";
 const POSITIONS_KEY = "positions";
 
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      req.result.createObjectStore(STORE);
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function idbSet(key: string, value: unknown): Promise<void> {
-  const db = await openDb();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).put(value, key);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  } finally {
-    db.close();
-  }
-}
-
-async function idbGet<T>(key: string): Promise<T | null> {
-  const db = await openDb();
-  try {
-    return await new Promise<T | null>((resolve, reject) => {
-      const tx = db.transaction(STORE, "readonly");
-      const req = tx.objectStore(STORE).get(key);
-      req.onsuccess = () => resolve((req.result as T | undefined) ?? null);
-      req.onerror = () => reject(req.error);
-    });
-  } finally {
-    db.close();
-  }
-}
-
 /**
  * 记住打开过的文件夹，重开时取回。存的是数组——可以同时开多个。
  *
- * 两套存法不一样：浏览器句柄本身可结构化克隆，直接塞进去；
- * 桌面版存的是 DiskDir 实例，塞进 IndexedDB 会被拍平成没有方法的普通对象，
- * 所以只存绝对路径，取回时重建。这也正是桌面版能真正「记住」的原因——
- * 路径不会像浏览器授权那样关掉程序就失效。
+ * 两套存法不一样：浏览器句柄本身可结构化克隆，直接塞进 IndexedDB；
+ * 桌面版存的是 DiskDir 实例，带着方法存不进配置文件（也存不进 IndexedDB，
+ * 会被拍平成普通对象），所以只存绝对路径，取回时重建。
+ * 这也正是桌面版能真正「记住」的原因——路径不会像浏览器授权那样关掉程序就失效。
  */
 export function rememberRoots(handles: DirHandle[]): Promise<void> {
   if (isDesktop) {
     const paths = handles
       .map((handle) => (handle instanceof DiskDir ? handle.path : null))
       .filter((path): path is string => path !== null);
-    return idbSet(ROOTS_KEY, paths);
+    return stateSet(ROOTS_KEY, paths);
   }
-  return idbSet(ROOTS_KEY, handles);
+  return stateSet(ROOTS_KEY, handles);
 }
 
 export async function recallRoots(): Promise<DirHandle[]> {
   if (isDesktop) {
-    const stored = await idbGet<unknown>(ROOTS_KEY);
+    const stored = await stateGet<unknown>(ROOTS_KEY);
     const paths = Array.isArray(stored)
       ? stored.filter((item): item is string => typeof item === "string")
       : [];
@@ -298,10 +256,10 @@ export async function recallRoots(): Promise<DirHandle[]> {
     }
     return alive;
   }
-  const list = await idbGet<DirHandle[]>(ROOTS_KEY);
+  const list = await stateGet<DirHandle[]>(ROOTS_KEY);
   if (Array.isArray(list)) return list;
   // 旧版本只存一个句柄。读回来接着用，别让已经在用的人开一次就发现工作区没了
-  const single = await idbGet<DirHandle>(ROOT_KEY);
+  const single = await stateGet<DirHandle>(ROOT_KEY);
   return single ? [single] : [];
 }
 
@@ -318,12 +276,12 @@ export type LastFile =
   | { kind: "loose"; path: string };
 
 export function rememberLastFile(last: LastFile): Promise<void> {
-  return idbSet(LAST_FILE_KEY, last);
+  return stateSet(LAST_FILE_KEY, last);
 }
 
 /**
- * 把 IndexedDB 里存着的东西认成 LastFile。单独拆出来是为了能测——
- * 真正容易出错的是「认不认得老格式」，而那跟 IndexedDB 无关。
+ * 把存着的东西认成 LastFile。单独拆出来是为了能测——
+ * 真正容易出错的是「认不认得老格式」，而那跟存在哪儿无关。
  *
  * 两种老格式都得认，否则老用户升上来会发现「上次那篇」没了：
  * 最早只存一个路径字符串；后来是没有 kind 字段的 { index, path }。
@@ -339,7 +297,7 @@ export function parseLastFile(value: unknown): LastFile | null {
 }
 
 export async function recallLastFile(): Promise<LastFile | null> {
-  return parseLastFile(await idbGet<unknown>(LAST_FILE_KEY));
+  return parseLastFile(await stateGet<unknown>(LAST_FILE_KEY));
 }
 
 // ---------- 每篇上次读到哪 ----------
@@ -400,20 +358,49 @@ export function trimPositions(map: PositionMap, cap: number = POSITION_CAP): Pos
 }
 
 export async function recallPositions(): Promise<PositionMap> {
-  return parsePositions(await idbGet<unknown>(POSITIONS_KEY));
+  return parsePositions(await stateGet<unknown>(POSITIONS_KEY));
 }
 
 /**
- * 记住某一篇的位置。存不进去（隐私模式、配额满）不该影响正在写的东西，
+ * 记住某一篇的位置。存不进去（隐私模式、配额满、磁盘写不动）不该影响正在写的东西，
  * 所以吞掉错误——大不了下次开这篇回到开头。
  */
 export async function rememberPosition(key: string, position: FilePosition): Promise<void> {
   try {
     const all = await recallPositions();
     all[key] = position;
-    await idbSet(POSITIONS_KEY, trimPositions(all));
+    await stateSet(POSITIONS_KEY, trimPositions(all));
   } catch (error) {
     console.warn("[Sheaf] 记不住阅读位置", error);
+  }
+}
+
+// ---------- 正文缩放到多大 ----------
+//
+// WebView2 的缩放是运行期属性，关掉重开一律回到 100%，它自己不记。
+// 只有桌面壳需要这个：浏览器里 Ctrl+ +/- 是浏览器自己的事，我们不该插手。
+
+const ZOOM_KEY = "zoom";
+
+export async function recallZoom(): Promise<number | null> {
+  if (!isDesktop) return null;
+  try {
+    return parseZoom(await stateGet<unknown>(ZOOM_KEY));
+  } catch (error) {
+    console.warn("[Sheaf] 读不出缩放比例", error);
+    return null;
+  }
+}
+
+/** 记不住缩放比例是小事，绝不能因此打断正在写的东西 */
+export async function rememberZoom(factor: number): Promise<void> {
+  if (!isDesktop) return;
+  const value = parseZoom(factor);
+  if (value === null) return;
+  try {
+    await stateSet(ZOOM_KEY, value);
+  } catch (error) {
+    console.warn("[Sheaf] 记不住缩放比例", error);
   }
 }
 
@@ -549,7 +536,7 @@ export function missingStep(elapsedMs: number): {
 }
 
 /**
- * 从 IndexedDB 取回的句柄权限通常回落到 prompt，必须重新确认。
+ * 浏览器里取回的句柄权限通常回落到 prompt，必须重新确认。
  * request=true 时会弹窗，因此只能在用户手势里调用。
  */
 export async function ensurePermission(
