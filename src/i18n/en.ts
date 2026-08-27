@@ -79,6 +79,8 @@ export const en: Dict = {
     howtoImages: "🖼️ Paste or drag in images — they're saved automatically into <code>images/</code> next to the draft",
     howtoTable: "📊 Put your cursor in a table and row/column buttons pop up in the top-right corner",
     howtoResume: "📖 Every draft remembers where you left off — switch away or restart, you land back in the same place",
+    howtoZoomDiagram:
+      "🔎 Hover an image or a diagram and a button appears in its corner — open it full screen, scroll to zoom, drag to pan, Esc to close",
     howtoUpdate:
       "⬆️ New versions announce themselves — one click installs. You can also check by hand below",
     howtoExport: "📤 “Export” in the top bar saves as .md, a web page, or prints straight to PDF",
@@ -203,6 +205,13 @@ export const en: Dict = {
     groupObjects: "Objects",
     groupSymbols: "Symbols",
     groupWork: "Work",
+  },
+  lightbox: {
+    open: "View this diagram larger",
+    zoomIn: "Zoom in +",
+    zoomOut: "Zoom out -",
+    fit: "Fit to window 0",
+    close: "Close Esc",
   },
   tableToolbar: {
     insertRowBelow: "Insert row below",

@@ -14,6 +14,7 @@ const args = [
   "src/fs.ts",
   "src/anchor.ts",
   "src/ir-repair.ts",
+  "src/lightbox-view.ts",
   "src/update.ts",
   "src/vite-env.d.ts",
   "--outDir",
@@ -53,6 +54,8 @@ console.log("");
 require("./watch-rules.test.cjs");
 console.log("");
 require("./ir-repair.test.cjs");
+console.log("");
+require("./lightbox-view.test.cjs");
 console.log("");
 require("./update.test.cjs");
 console.log("");

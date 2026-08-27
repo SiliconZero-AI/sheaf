@@ -30,6 +30,11 @@ const ICON: Record<string, string> = {
   "col-plus": '<rect x="5" y="4" width="6" height="16" rx="1.5"/><path d="M15 9h6M18 6v6"/>',
   "row-minus": '<rect x="4" y="5" width="16" height="6" rx="1.5"/><path d="M9 18h6"/>',
   "col-minus": '<rect x="5" y="4" width="6" height="16" rx="1.5"/><path d="M15 9h6"/>',
+  expand: '<path d="M9 4H4v5"/><path d="M15 4h5v5"/><path d="M15 20h5v-5"/><path d="M9 20H4v-5"/><path d="m4.8 4.8 4.4 4.4M19.2 4.8l-4.4 4.4M19.2 19.2l-4.4-4.4M4.8 19.2l4.4-4.4"/>',
+  "zoom-in": '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/><path d="M11 8.5v5M8.5 11h5"/>',
+  "zoom-out": '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/><path d="M8.5 11h5"/>',
+  fit: '<path d="M9 4v5H4"/><path d="M15 4v5h5"/><path d="M15 20v-5h5"/><path d="M9 20v-5H4"/>',
+  close: '<path d="m6 6 12 12M18 6 6 18"/>',
   lang: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.6 2.3 4 5.2 4 8.5s-1.4 6.2-4 8.5c-2.6-2.3-4-5.2-4-8.5s1.4-6.2 4-8.5z"/>',
 };
 
