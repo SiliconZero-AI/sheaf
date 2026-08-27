@@ -83,13 +83,25 @@ export function parseState(raw: unknown): StateBag {
   return bag;
 }
 
-/** 文本进、记忆出。整个文件不是 JSON 也照样得给出一份能用的空记忆 */
-export function parseStateText(text: string): StateBag {
+/**
+ * 文件里那串东西认不认得。
+ *
+ * broken 分的是两种完全不同的处境，收场也不一样：
+ * - broken=false + 空记忆：文件好好的，里面本来就没东西（用户把工作区全关了）。照办，别多事。
+ * - broken=true：连 JSON 都不是（手改坏、写一半断电、磁盘串位）。这时候回头去浏览器存储里
+ *   找那份旧的救一次——旧数据可能过期，但「过期的工作区」远好过「一个都不剩」。
+ */
+export function readStateFile(text: string): { bag: StateBag; broken: boolean } {
   try {
-    return parseState(JSON.parse(text));
+    return { bag: parseState(JSON.parse(text)), broken: false };
   } catch {
-    return {};
+    return { bag: {}, broken: true };
   }
+}
+
+/** 只要记忆、不关心坏没坏的简写 */
+export function parseStateText(text: string): StateBag {
+  return readStateFile(text).bag;
 }
 
 /** 落盘的样子。版本号钉在最前面，人打开这个文件时第一眼就看得到 */
@@ -241,10 +253,12 @@ async function loadFromDisk(): Promise<StateBag> {
 
   try {
     if (await exists(path.file)) {
-      // 文件在——它就是权威，不再回头看 IndexedDB。
-      // 内容坏了（parseStateText 给回空的）也照样以它为准：
-      // 拿几个月前的旧数据把用户后来的改动盖回去，比重挂一次文件夹更糟
-      return parseStateText(await readTextFile(path.file));
+      const { bag: stored, broken } = readStateFile(await readTextFile(path.file));
+      // 文件好好的就以它为准，哪怕里面是空的——用户可能就是把工作区全关了，
+      // 这时候拿几个月前的旧数据盖回去，比什么都不做更糟
+      if (!broken) return stored;
+      console.warn("[Sheaf] 配置文件内容坏了，回头找浏览器存储里那份旧的救一次");
+      // 坏了就往下走迁移分支，救回来顺便把坏文件覆盖掉
     }
   } catch (error) {
     console.warn("[Sheaf] 配置文件读不动，这次不记东西", error);
@@ -252,13 +266,19 @@ async function loadFromDisk(): Promise<StateBag> {
     return {};
   }
 
-  // 文件不存在 —— 要么是全新用户，要么是老用户第一次升上来。
-  // 把 IndexedDB 里那份搬过来，之后以文件为准。
-  // 旧数据留着不删：留着无害，万一配置文件哪天又被谁清掉，还能再救一次
+  // 走到这儿只有两种情况：文件不存在（全新用户，或老用户第一次升上来），
+  // 或者文件内容坏得连 JSON 都不是。两种都去浏览器存储里搬一份，之后以文件为准。
+  // 旧数据留着不删：留着无害，万一配置文件哪天又被谁清掉、或者坏掉，还能再救一次
   const migrated = await readLegacy();
   if (!isEmptyState(migrated)) {
     console.info("[Sheaf] 把工作区记忆从浏览器存储搬进配置文件");
-    await writeBag(migrated);
+    try {
+      await writeBag(migrated);
+    } catch (error) {
+      // 落不了盘也得把这份记忆用起来（这一趟照样能恢复工作区），下次开机再搬一遍。
+      // 这里绝不能让异常冒出去：调用链一路通到 boot()，抛出去就是整个程序起不来
+      console.warn("[Sheaf] 记忆搬过来了但写不进配置文件，下次开机再试", error);
+    }
   }
   return migrated;
 }

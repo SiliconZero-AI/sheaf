@@ -11,6 +11,7 @@
 const {
   parseState,
   parseStateText,
+  readStateFile,
   serializeState,
   stateFromLegacy,
   parseZoom,
@@ -52,6 +53,18 @@ check(
 check("roots 是空数组，当没存过", parseState({ roots: [] }), {});
 check("positions 被写成了数组", parseState({ positions: [1, 2] }), {});
 check("多余字段一律忽略", parseState({ roots: ["D:/一"], 乱七八糟: true }), { roots: ["D:/一"] });
+
+console.log("\n=== 「文件坏了」和「文件里就是空的」必须分得开 ===");
+// 分不开的后果二选一：要么文件一坏就一个工作区都不剩，
+// 要么把用户主动关掉的工作区又从几个月前的旧数据里刨回来
+
+check("连 JSON 都不是 = 坏了，要回浏览器存储救一次", readStateFile("这不是 json{{{").broken, true);
+check("写了一半断电 = 坏了", readStateFile('{"roots":["D:\\\\稿子"').broken, true);
+check("空文件 = 坏了", readStateFile("").broken, true);
+check("合法 JSON 但没内容 = 没坏，就是空的", readStateFile('{"version":1}').broken, false);
+check("roots 是空数组 = 没坏（用户把工作区全关了，得听他的）", readStateFile('{"version":1,"roots":[]}').broken, false);
+check("正常文件 = 没坏", readStateFile('{"version":1,"roots":["D:/一"]}').broken, false);
+check("坏了的时候记忆是空的，不是半截", readStateFile("坏的").bag, {});
 
 console.log("\n=== last-file 的两种历史格式都得往下传（认不认得交给 parseLastFile）===");
 
