@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.6 — 2026-08-27
 
 Diagrams and images that are too small to read can now be opened full screen.
 
