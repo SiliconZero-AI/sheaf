@@ -83,6 +83,7 @@ export interface Dict {
     howtoExport: string;
     /** 每篇记住上次读到哪 */
     howtoResume: string;
+    howtoZoomDiagram: string;
     howtoUpdate: string;
     shortcutsTitle: string;
     shortcutFind: string;
@@ -212,6 +213,13 @@ export interface Dict {
     groupObjects: string;
     groupSymbols: string;
     groupWork: string;
+  };
+  lightbox: {
+    open: string;
+    zoomIn: string;
+    zoomOut: string;
+    fit: string;
+    close: string;
   };
   tableToolbar: {
     insertRowBelow: string;

@@ -847,7 +847,10 @@ body {
   #toolbar-slot,
   .pane,
   .status,
-  .search-bar {
+  .search-bar,
+  /* 开着灯箱直接按 Ctrl+P 时，打出来的该是稿子，不是那张盖住一切的遮罩 */
+  .wd-lightbox,
+  .wd-zoom-trigger {
     display: none !important;
   }
 
@@ -1778,4 +1781,132 @@ body {
   filter: none;
   opacity: 0.55;
   cursor: default;
+}
+
+/* ---------- 图片 / 流程图放大看 ---------- */
+
+/* hover 到图上时浮在它右上角的小按钮。跟表格按钮条同一套路：挂在画布卡片里，
+   不进 Vditor 的 contenteditable 树 */
+.wd-zoom-trigger {
+  position: absolute;
+  z-index: 20;
+  padding: 3px;
+  background: var(--float);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+}
+
+.wd-zoom-trigger[hidden] {
+  display: none;
+}
+
+.wd-zoom-trigger .wd-line-icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.wd-zoom-trigger:hover {
+  background: var(--hover);
+  color: var(--accent-strong);
+}
+
+/* 查看层。z-index 排在各面板之上、冲突框（70）之下——那个是必须先处理完的系统提示 */
+.wd-lightbox {
+  position: absolute;
+  inset: 0;
+  z-index: 65;
+  background: rgba(14, 24, 21, 0.72);
+}
+
+.wd-lightbox[hidden] {
+  display: none;
+}
+
+.wd-lightbox:focus {
+  outline: none;
+}
+
+.wd-lightbox__stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  cursor: grab;
+  /* 拖动时别把图里的文字选中，那样会拖出一片蓝 */
+  user-select: none;
+  -webkit-user-select: none;
+  /* 触屏上自己接管手势，否则浏览器会先把它当页面滚动吃掉 */
+  touch-action: none;
+}
+
+.wd-lightbox__stage.is-dragging {
+  cursor: grabbing;
+}
+
+/* 缩放和平移都作用在这一层。origin 必须是 0 0，lightbox-view.ts 那套数学才成立 */
+.wd-lightbox__holder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+/* mermaid 的 SVG 自己没有背景，直接摆在深遮罩上文字会糊成一团，给它一张纸。
+   阴影不是装饰：深色主题下这张纸和遮罩都是深的，没有它就看不出图从哪儿开始 */
+.wd-lightbox__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--surface);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+}
+
+.wd-lightbox__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-shadow: var(--shadow-md);
+}
+
+.wd-lightbox__bar {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  transform: translateX(-50%);
+  background: var(--float);
+  border-radius: 11px;
+  box-shadow: var(--shadow-md);
+}
+
+.wd-lightbox__btn .wd-line-icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.wd-lightbox__btn:hover {
+  background: var(--hover);
+  color: var(--accent-strong);
+}
+
+/* 定宽：比例在 100% 和 25% 之间跳时按钮不要跟着左右挪 */
+.wd-lightbox__percent {
+  min-width: 52px;
+  color: var(--mute);
+  font: 400 12px/1 var(--font-ui);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }

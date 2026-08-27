@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+Diagrams and images that are too small to read can now be opened full screen.
+
+- **Hover an image or a diagram and a button appears in its corner.** Click it and the picture opens over the whole window, where you can scroll to zoom, drag to move around, and press `Esc` to go back. Wide flowcharts — the ones squeezed down to fit the writing column until every label ran together — are the reason this exists.
+- **It opens at whatever size fits.** Small pictures stay their own size rather than being blown up into a blur; large ones are scaled down until the whole thing is visible. `0` puts it back to that, `+` and `-` step through zoom levels, and the percentage is always on screen.
+- Zooming with the scroll wheel keeps whatever is under the pointer under the pointer, so you can aim at a corner of a diagram and go straight in.
+- Nothing about how drafts are stored, exported or printed changed — this is a way of looking at a picture, not a change to the page it sits on.
+
 ## 0.1.5 — 2026-08-26
 
 Formatting now shows up the moment you apply it, and you can make the text bigger.

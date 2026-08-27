@@ -80,6 +80,7 @@ export const zh: Dict = {
     howtoTable: "📊 光标停进表格，右上角自动冒出加行/加列按钮",
     howtoExport: "📤 顶栏「导出」可以存成 .md、网页，或直接打印成 PDF",
     howtoResume: "📖 每篇记得上次读到哪，切走再回来、关掉重开都落回原处",
+    howtoZoomDiagram: "🔎 图片和流程图鼠标移上去，右上角冒出按钮，点开全屏看：滚轮缩放、按住拖动、Esc 关掉",
     howtoUpdate: "⬆️ 有新版会自己提示你，点一下就装好；也可以在下面手动查一次",
     shortcutsTitle: "⌨️ 快捷键",
     shortcutFind: "当前稿子内查找",
@@ -197,6 +198,13 @@ export const zh: Dict = {
     groupObjects: "物品",
     groupSymbols: "符号",
     groupWork: "工作",
+  },
+  lightbox: {
+    open: "放大看这张图",
+    zoomIn: "放大 +",
+    zoomOut: "缩小 -",
+    fit: "适应窗口 0",
+    close: "关闭 Esc",
   },
   tableToolbar: {
     insertRowBelow: "下方加一行",

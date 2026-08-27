@@ -8,6 +8,7 @@ import { Search } from "./search";
 import { EmojiPicker } from "./emoji";
 import { GlobalSearch } from "./global-search";
 import { TableToolbar } from "./table-toolbar";
+import { DiagramLightbox } from "./lightbox";
 import { HelpPanel } from "./help";
 import {
   canInstallNow,
@@ -327,6 +328,10 @@ const search = new Search(
   () => dom.editor.querySelector<HTMLElement>(".vditor-ir .vditor-reset"),
 );
 const tableToolbar = new TableToolbar(dom.canvas, () =>
+  dom.editor.querySelector<HTMLElement>(".vditor-ir .vditor-reset"),
+);
+// 遮罩挂 dom.body 不挂 dom.canvas——canvas 自己 overflow: hidden，装不下全屏层
+const lightbox = new DiagramLightbox(dom.canvas, dom.body, () =>
   dom.editor.querySelector<HTMLElement>(".vditor-ir .vditor-reset"),
 );
 const help = new HelpPanel({
@@ -1280,6 +1285,8 @@ function encodingLabel(encoding: TextEncoding): string {
  * 点左栏切稿不给焦点——他可能只是想扫一眼。
  */
 function openFile(spaceId: string, node: FileNode, focus = false): Promise<void> {
+  // 换稿子了，灯箱里那张图属于上一篇。外部改动触发的重载不走这里，那种情况不该抢走用户正看的图
+  lightbox.close();
   const run = () => doOpenFile(spaceId, node, focus);
   openChain = openChain.then(run, run);
   return openChain;
@@ -1404,6 +1411,7 @@ function locateInSpaces(abs: string): { spaceId: string; node: FileNode } | null
  * 8 月 15 号就是在其中一条上漏了编码保护和 images.reset() 的时序，丢过稿。
  */
 async function openLooseFile(handle: FileHandle, focus = false): Promise<void> {
+  lightbox.close();
   // 这一篇可能其实就躺在某个已挂载的工作区里——双击、拖拽、单开三条路都可能撞上。
   // 撞上了就得按「工作区里的那篇」开：左栏才会高亮，图片才按相对路径找得到，
   // 记忆也才会记成工作区那种。留在散篇这条路上 spaceId / path 是空的，
@@ -1871,6 +1879,7 @@ dom.fileInput.addEventListener("change", async () => {
   const file = dom.fileInput.files?.[0];
   dom.fileInput.value = "";
   if (!file) return;
+  lightbox.close();
   state.loading = true;
   try {
     const loaded = await readTextFromFile(file);
