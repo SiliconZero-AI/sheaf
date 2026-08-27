@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.7 — 2026-08-27
 
 Your folders and reading positions no longer depend on browser storage, and the text size is remembered.
 
