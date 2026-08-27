@@ -87,7 +87,7 @@ export const zh: Dict = {
     shortcutGlobalFind: "跨文件夹全局搜索",
     shortcutToggleFiles: "收起/展开文件栏",
     shortcutToggleOutline: "收起/展开大纲",
-    shortcutZoom: "放大/缩小正文（也可以按住 Ctrl 滚滚轮）",
+    shortcutZoom: "放大/缩小正文（也可以按住 Ctrl 滚滚轮），比例关掉重开还在",
     shortcutZoomReset: "恢复原始大小",
     versionLabel: "版本",
   },
