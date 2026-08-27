@@ -281,6 +281,9 @@ export class DiagramLightbox {
       image.src = target.el.currentSrc || target.el.src;
       image.alt = target.el.alt;
       image.className = "wd-lightbox__img";
+      // img 默认是可拖拽的，不关掉的话「按住拖动平移」会被浏览器当成「把图片拖出去」，
+      // 顺带把 Sheaf 的拖放提示层也叫出来（它只在鼠标离开整个窗口时才关，于是卡住）
+      image.draggable = false;
       return image;
     }
     cloneSeq += 1;
@@ -321,6 +324,9 @@ export class DiagramLightbox {
   }
 
   private startDrag(event: PointerEvent): void {
+    // 拦住浏览器自己那套图片/选区拖拽。draggable=false 管住了 img，
+    // SVG 里的文字节点还能被拖出一个选区来，这一行把两条路一起堵上
+    event.preventDefault();
     this.dragPointer = event.pointerId;
     this.dragFrom = { x: event.clientX, y: event.clientY, viewX: this.view.x, viewY: this.view.y };
     this.stage.setPointerCapture(event.pointerId);

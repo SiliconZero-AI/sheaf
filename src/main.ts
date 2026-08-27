@@ -1550,15 +1550,21 @@ window.addEventListener("dragleave", (event) => {
   if (event.relatedTarget === null) setDropActive(false);
 });
 
+// 兜底：dragleave 只认「鼠标离开了整个窗口」这一种收场，拖拽在窗口内部结束时它不响。
+// 页面内部发起的拖拽（在灯箱里拖图、拖一段选区）就是这种，提示层会一直挂着挡住正文。
+// dragend 在拖拽源上一定会触发，无论最后是放下了还是取消了。
+window.addEventListener("dragend", () => setDropActive(false));
+
 window.addEventListener(
   "drop",
   (event) => {
+    // 提示层是 dragover 那边开的，无论这一次放的是不是我们要的东西，落地就该收起来
+    setDropActive(false);
     if (!event.dataTransfer || !hasNonImage(event.dataTransfer)) return;
     event.preventDefault();
     // 拦在捕获阶段：不然 Vditor 的图片上传处理器会抢先回一句「请选择图片文件」
     event.stopPropagation();
     const jobs = grabHandles(event.dataTransfer);
-    setDropActive(false);
     void handleDropped(jobs);
   },
   true,

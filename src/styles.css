@@ -1853,6 +1853,8 @@ body {
   left: 0;
   transform-origin: 0 0;
   will-change: transform;
+  /* 拖动是用来平移的，不是用来把图拖出去的 */
+  -webkit-user-drag: none;
 }
 
 /* mermaid 的 SVG 自己没有背景，直接摆在深遮罩上文字会糊成一团，给它一张纸。
