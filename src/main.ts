@@ -26,6 +26,7 @@ import type Vditor from "vditor";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   ensurePermission,
   findFile,
@@ -61,6 +62,8 @@ import {
   positionKey,
   recallPositions,
   rememberPosition,
+  recallZoom,
+  rememberZoom,
   type FilePosition,
   type LastFile,
   type DiskStamp,
@@ -1570,7 +1573,69 @@ window.addEventListener(
   true,
 );
 
+// ---------- 正文缩放到多大 ----------
+//
+// 缩放本身是 WebView2 自己做的（tauri.conf.json 的 zoomHotkeysEnabled），
+// 我们一行都不接管——Ctrl+ +/-/0 和 Ctrl+滚轮全是它的。
+// 但它只把比例当运行期属性，关掉重开一律回到 100%，所以「记住」这件事得自己来。
+//
+// 怎么知道用户现在缩到了几：devicePixelRatio = 显示器自己的缩放 × 页面缩放，
+// 除掉前者就只剩后者。前者向 Tauri 现问，不靠开机时存的基准——
+// 那样的话把窗口挪到另一块 DPI 不同的屏幕上，读出来的数就是错的。
+
+/** 上一次记下的页面缩放。用来判断这次变化值不值得写盘 */
+let zoomNoted = 1;
+
+async function readZoom(): Promise<number | null> {
+  try {
+    const scale = await getCurrentWindow().scaleFactor();
+    if (!(scale > 0)) return null;
+    return window.devicePixelRatio / scale;
+  } catch (error) {
+    console.warn("[Sheaf] 读不出显示器缩放", error);
+    return null;
+  }
+}
+
+async function noteZoom(): Promise<void> {
+  const next = await readZoom();
+  if (next === null) return;
+  // 差得太小就当没动：浮点除法带尾巴，不设门槛会一直空写盘
+  if (Math.abs(next - zoomNoted) < 0.01) return;
+  zoomNoted = next;
+  await rememberZoom(next);
+}
+
+async function setupZoom(): Promise<void> {
+  const stored = await recallZoom();
+  if (stored !== null) {
+    try {
+      await getCurrentWebview().setZoom(stored);
+      zoomNoted = stored;
+    } catch (error) {
+      // 恢复不了就以 100% 起，不该因此开不了机
+      console.warn("[Sheaf] 恢复不了上次的缩放比例", error);
+    }
+  }
+
+  // 用户一缩放，devicePixelRatio 就变。matchMedia 是唯一能听到这件事的接口，
+  // 而一条 resolution 查询只对当时那个值成立，所以每次响完都要照新值重新挂一条
+  let query: MediaQueryList | null = null;
+  const onChange = (): void => {
+    arm();
+    void noteZoom();
+  };
+  const arm = (): void => {
+    query?.removeEventListener("change", onChange);
+    query = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    query.addEventListener("change", onChange);
+  };
+  arm();
+}
+
 async function boot(): Promise<void> {
+  // 排在最前面：先把比例摆正再渲染，不然开机时正文会先小后大跳一下
+  if (isDesktop) await setupZoom();
   editor.setValue(t().welcome, true);
   refreshMeta();
   // 先渲染一次：没有工作区时左栏要显示引导，而不是一片空白

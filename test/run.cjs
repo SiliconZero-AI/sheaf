@@ -12,6 +12,8 @@ const args = [
   "--ignoreConfig",
   "src/images.ts",
   "src/fs.ts",
+  "src/env.ts",
+  "src/store.ts",
   "src/anchor.ts",
   "src/ir-repair.ts",
   "src/lightbox-view.ts",
@@ -44,6 +46,8 @@ fs.writeFileSync(path.join(outDir, "package.json"), '{ "type": "commonjs" }\n');
 
 // stamp 在前：它是同步的，跑完就回来；images.test.cjs 末尾会 process.exit，排它后面就跑不到了
 require("./stamp.test.cjs");
+console.log("");
+require("./store.test.cjs");
 console.log("");
 require("./last-file.test.cjs");
 console.log("");

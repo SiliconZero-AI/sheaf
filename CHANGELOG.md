@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+Your folders and reading positions no longer depend on browser storage, and the text size is remembered.
+
+- **Upgrading by hand can no longer wipe your workspace.** The list of folders you have open, which draft you had last, and how far you had read used to live inside the browser engine's storage — which the uninstaller's "delete application data" box removes. They now live in a plain `state.json` outside that folder, so ticking that box during an upgrade leaves them alone.
+- **Nothing to set up again.** The first time this version starts it copies whatever was in the old location across, then works from the file. Folders you already have open stay open.
+- **The text size sticks.** `Ctrl` and `+` or `-` used to reset to 100% every time Sheaf reopened. Whatever size you leave it at is what you get next time.
+- If the file is ever damaged — edited by hand, a power cut mid-write — Sheaf still starts, falls back to whatever the old storage still holds, and writes a clean file. It never starts up empty because of a bad byte.
+- One thing this cannot fix retroactively: upgrading **to** this version with "delete application data" ticked still loses the old data, because the version you are leaving never wrote the new file. From this version on you are covered.
+
 ## 0.1.6 — 2026-08-27
 
 Diagrams and images that are too small to read can now be opened full screen.

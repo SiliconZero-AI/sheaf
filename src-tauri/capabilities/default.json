@@ -13,6 +13,7 @@
     "fs:allow-write-file",
     "fs:allow-read-dir",
     "fs:allow-mkdir",
+    "fs:allow-rename",
     "fs:allow-exists",
     "fs:allow-stat",
     "fs:allow-watch",
