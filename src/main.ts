@@ -40,6 +40,8 @@ import {
   scanTree,
   uniqueName,
   writeFile,
+  moveToTrash,
+  nextAfterDelete,
   type DirNode,
   type FileNode,
   type TextEncoding,
@@ -135,6 +137,13 @@ const dom = {
   conflictKeepMine: need<HTMLButtonElement>("#conflict-keep-mine"),
   conflictKeepDisk: need<HTMLButtonElement>("#conflict-keep-disk"),
   conflictLater: need<HTMLButtonElement>("#conflict-later"),
+  deleteMask: need<HTMLDivElement>("#delete-mask"),
+  deleteBox: need<HTMLDivElement>("#delete-box"),
+  deleteFile: need<HTMLElement>("#delete-file"),
+  deleteFailed: need<HTMLParagraphElement>("#delete-failed"),
+  deleteClose: need<HTMLButtonElement>("#delete-close"),
+  deleteCancel: need<HTMLButtonElement>("#delete-cancel"),
+  deleteConfirm: need<HTMLButtonElement>("#delete-confirm"),
   helpCheck: need<HTMLButtonElement>("#help-check"),
   helpCheckStatus: need<HTMLSpanElement>("#help-check-status"),
   updateMask: need<HTMLDivElement>("#update-mask"),
@@ -288,6 +297,7 @@ const tree = new FileTree(
   (spaceId) => void removeSpace(spaceId),
   () => void pickDirectory(),
   () => void resumePending(),
+  (spaceId, node) => askDelete(spaceId, node),
 );
 const outline = new Outline(dom.outline, jumpToHeading);
 const globalSearch = new GlobalSearch(
@@ -1245,6 +1255,102 @@ async function removeSpace(id: string): Promise<void> {
   editor.tip(t().tip.removedFromList(gone.tree.name), 4000);
 }
 
+// ---------- 删除文件 ----------
+//
+// 全应用唯一一处会动用户磁盘文件的地方。三条规矩钉死：
+// 确认挡在真删之前；进回收站不永久删；删完不能把它又写回去。
+// 最后那条不是多虑，见下面 doDelete 里的注释。
+
+/** 正等着用户确认的那一篇。null = 框没开着 */
+let pendingDelete: { spaceId: string; node: FileNode } | null = null;
+
+function askDelete(spaceId: string, node: FileNode): void {
+  pendingDelete = { spaceId, node };
+  dom.deleteFile.textContent = node.path || node.name;
+  dom.deleteFailed.hidden = true;
+  dom.deleteMask.hidden = false;
+  // 焦点给容器不给按钮，跟冲突框同一条规矩：用户正在打字时不能让一个空格
+  // 就替他按下「移到回收站」。Tab 一下就能走到按钮，但那是明确操作
+  dom.deleteBox.focus();
+}
+
+function hideDelete(): void {
+  dom.deleteMask.hidden = true;
+  pendingDelete = null;
+}
+
+/**
+ * 真删。顺序是有讲究的，换一步就出错：
+ *
+ * 1. **先算接班的是谁**——判据是「它原来排在谁后面」，等重扫完那一篇已经不在树里了。
+ * 2. 挪进回收站。失败就地报错、什么都不动，框留着让用户看见原因。
+ * 3. **删的正好是画布上这篇的话，先把 state.file / dirty 清掉，再切下一篇。**
+ *    不清的话 doOpenFile 开头那道「切走前先保存上一篇」会照常跑，
+ *    而它写的就是刚删掉的那个句柄——文件会被原封不动地写回磁盘，删了等于没删。
+ *    顺带这也让 savePositionNow() 拿不到 key，不会给一篇已经不存在的稿子记位置。
+ * 4. 重扫左栏。手动扫而不是等 watch：watch 有 600ms 防抖，那一行赖着不走看着像坏了，
+ *    而且浏览器模式压根没有 watch。稍后 watch 那次重扫是同一份结果，幂等。
+ *
+ * 用户在这篇里有没有没保存的改动，这里**不额外拦一道**——
+ * 「删掉」本身就是「这篇我不要了」，再问一次是把决定推回给已经做完决定的人。
+ */
+async function doDelete(): Promise<void> {
+  if (!pendingDelete) return;
+  const { spaceId, node } = pendingDelete;
+  const space = state.spaces.find((item) => item.id === spaceId);
+  if (!space) {
+    hideDelete();
+    return;
+  }
+  const abs = loosePathOf(node.handle);
+  if (!abs) {
+    dom.deleteFailed.textContent = t().del.failed;
+    dom.deleteFailed.hidden = false;
+    return;
+  }
+
+  const successor = nextAfterDelete(space.tree, node.path);
+  const wasCurrent = state.spaceId === spaceId && state.path === node.path;
+
+  try {
+    await moveToTrash(abs);
+  } catch (error) {
+    // 原因原文只进控制台：可能是 Windows 的英文错误串，给用户看没有意义
+    console.error("[Sheaf] 移到回收站失败", abs, error);
+    dom.deleteFailed.textContent = t().del.failed;
+    dom.deleteFailed.hidden = false;
+    return;
+  }
+
+  const name = node.name;
+  hideDelete();
+
+  if (wasCurrent) {
+    // 见上面第 3 条：这两行必须在 openFile 之前。
+    // 拆掉任意一行都会复现「树里删了、磁盘上还在，而且带着刚敲的字」——2026-08-27 实测过
+    state.file = null;
+    state.dirty = false;
+  }
+
+  await rescan(space);
+
+  if (wasCurrent) {
+    if (successor) {
+      await openFile(spaceId, successor);
+    } else {
+      // 整个工作区被删空了：清空画布，不留一篇指向已删文件的半截状态
+      images.reset();
+      setDoc(null, "", "", "");
+      editor.setValue("", true);
+      tree.setActive(null, null);
+      refreshMeta();
+      refreshWatchers();
+    }
+  }
+
+  editor.tip(t().del.done(name), 4000);
+}
+
 function setDoc(
   handle: FileHandle | null,
   spaceId: string,
@@ -2037,6 +2143,22 @@ dom.conflictLater.addEventListener("click", () => dismissConflict());
 dom.conflictClose.addEventListener("click", () => dismissConflict());
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !dom.conflictMask.hidden) dismissConflict();
+});
+
+dom.deleteConfirm.addEventListener("click", () => void doDelete());
+dom.deleteCancel.addEventListener("click", () => hideDelete());
+dom.deleteClose.addEventListener("click", () => hideDelete());
+// 点遮罩空白处也算取消。删除框跟冲突框不同：冲突是「必须选一个」，
+// 删除是「不选就等于不删」，所以出路给得越多越好
+dom.deleteMask.addEventListener("mousedown", (event) => {
+  if (event.target === dom.deleteMask) hideDelete();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !dom.deleteMask.hidden) {
+    // 别让这一下 Esc 顺带被查找框、灯箱之类的也收走
+    event.stopPropagation();
+    hideDelete();
+  }
 });
 dom.saveLabel.addEventListener("click", () => {
   if (state.conflict) showConflict();

@@ -79,6 +79,7 @@ export const en: Dict = {
     howtoImages: "🖼️ Paste or drag in images — they're saved automatically into <code>images/</code> next to the draft",
     howtoTable: "📊 Put your cursor in a table and row/column buttons pop up in the top-right corner",
     howtoResume: "📖 Every draft remembers where you left off — switch away or restart, you land back in the same place",
+    howtoDelete: "🗑️ Right-click any draft on the left to delete it — it asks first, and it goes to the Recycle Bin",
     howtoZoomDiagram:
       "🔎 Hover an image or a diagram and a button appears in its corner — open it full screen, scroll to zoom, drag to pan, Esc to close",
     howtoUpdate:
@@ -153,6 +154,16 @@ export const en: Dict = {
     checking: "Checking for updates…",
     upToDate: "You are on the latest version",
     checkFailed: "Could not check for updates — you may be offline",
+  },
+  del: {
+    menu: "Delete",
+    title: "Delete this file?",
+    cancel: "Cancel",
+    confirm: "Move to Recycle Bin",
+    closeTitle: "Cancel Esc",
+    safe: "Goes to the Recycle Bin — you can restore it later",
+    done: (name) => `Moved “${name}” to the Recycle Bin`,
+    failed: "Could not delete it. The file may already be gone, or open in another program",
   },
   meta: {
     charCount: (n) => `${n} chars`,

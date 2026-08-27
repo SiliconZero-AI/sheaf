@@ -21,6 +21,7 @@ Tested from start to finish with real writing. Packaged as a Windows installer (
 - 📖 **Every draft remembers where you left off**: switch drafts, or close and reopen Sheaf, and you land back at the same place and cursor position. Your spot is tracked by the nearest heading, so text added above where you are reading does not push you off it
 - 🔎 **Zoom the text**: `Ctrl` + `+` / `-` to resize everything, `Ctrl+0` to reset, `Ctrl` + scroll wheel works too — for dense drafts or a screen that sits far away, and the size you pick is remembered
 - 🖼️ **Open images and diagrams full screen**: hover one and a button appears in its corner; click it to fill the window, then scroll to zoom, drag to pan, `Esc` to go back. This is what wide flowcharts need — the ones squeezed into the writing column until every label runs together
+- 🗑️ **Delete drafts from the file panel**: right-click any draft and pick "Delete". It asks first, and what you delete goes to the Recycle Bin — restore it if you change your mind, no trip to File Explorer to clear out a scratch file
 - 🌗 **Light/dark themes**: follows the system by default, lock it from the top bar
 - 🌐 **Bilingual interface**: switch between Chinese and English instantly, no reload
 - ⬆️ **Updates itself**: when a new version exists, Sheaf tells you at startup and lists what changed. One click downloads, installs, and reopens it — your folders and reading positions come through untouched

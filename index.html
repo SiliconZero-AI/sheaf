@@ -290,6 +290,7 @@
                 <li data-i18n="help.howtoTable">📊 光标停进表格，右上角自动冒出加行/加列按钮</li>
                 <li data-i18n="help.howtoExport">📤 顶栏「导出」可以存成 .md、网页，或直接打印成 PDF</li>
                 <li data-i18n="help.howtoResume">📖 每篇记得上次读到哪，切走再回来、关掉重开都落回原处</li>
+                <li data-i18n="help.howtoDelete">🗑️ 右键左栏任意一篇可以删掉它，删之前会先问一句，删掉的进回收站</li>
                 <li data-i18n="help.howtoZoomDiagram">🔎 图片和流程图鼠标移上去，右上角冒出按钮，点开全屏看：滚轮缩放、按住拖动、Esc 关掉</li>
                 <li data-i18n="help.howtoUpdate">⬆️ 有新版会自己提示你，点一下就装好；也可以在下面手动查一次</li>
               </ul>
@@ -413,6 +414,45 @@
               <span class="update-actions">
                 <button type="button" class="conflict-later" id="update-later" data-i18n="update.later">以后再说</button>
                 <button type="button" class="update-now" id="update-now" data-i18n="update.now">现在更新</button>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 删除确认。第三次复用冲突框那套模态（冲突 / 更新 / 删除），不造第四套。
+             这是全应用唯一一个会动用户磁盘文件的按钮，所以确认必须挡在真删之前，
+             不做「先删了再给撤销」——撤销栈救不了已经离开进程的文件。 -->
+        <div class="conflict-mask" id="delete-mask" hidden>
+          <div class="conflict-box is-narrow" id="delete-box" role="alertdialog" aria-labelledby="delete-title" tabindex="-1">
+            <div class="conflict-head">
+              <!-- 垃圾桶，不用三角感叹号：这不是出了错，是一个待确认的正常操作 -->
+              <svg class="conflict-mark wd-line-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <path d="M4 7h16" />
+                <path d="M9.5 7V5.5a1.5 1.5 0 0 1 1.5-1.5h2a1.5 1.5 0 0 1 1.5 1.5V7" />
+                <path d="M6.5 7l.8 11.6a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4L17.5 7" />
+                <path d="M10.5 10.5v6M13.5 10.5v6" />
+              </svg>
+              <div class="conflict-head-text">
+                <b id="delete-title" data-i18n="del.title">删除这个文件？</b>
+                <p class="conflict-body"><code id="delete-file"></code></p>
+              </div>
+              <button type="button" id="delete-close" class="icon-btn" data-i18n-title="del.closeTitle" title="取消 Esc">
+                <svg class="wd-line-icon" viewBox="0 0 24 24" width="15" height="15"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </div>
+
+            <!-- 删不掉时的原因写在框里，不走 editor.tip()：遮罩盖着编辑器，
+                 Vditor 的提示条会出现在用户看不到的地方（跟更新框同一个理由） -->
+            <p class="update-blocked" id="delete-failed" hidden></p>
+
+            <div class="conflict-foot">
+              <span class="conflict-frozen">
+                <svg class="wd-line-icon" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M4 7h16" /><path d="M6.5 7l.8 11.6a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4L17.5 7" /></svg>
+                <span id="delete-safe" data-i18n="del.safe">会移到回收站，之后还能还原</span>
+              </span>
+              <span class="update-actions">
+                <button type="button" class="conflict-later" id="delete-cancel" data-i18n="del.cancel">取消</button>
+                <button type="button" class="delete-now" id="delete-confirm" data-i18n="del.confirm">移到回收站</button>
               </span>
             </div>
           </div>

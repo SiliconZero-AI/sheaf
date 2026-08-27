@@ -36,3 +36,8 @@ windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
 # 这个插件不支持移动端，无条件依赖会让将来真去编 iOS/Android 时在依赖解析阶段就炸。
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2.10.1"
+# 删文件要进回收站，不是永久删。tauri-plugin-fs 的 remove() 只会永久删，
+# 官方的 move-to-trash 需求（tauri#5680）2022 年开到现在还没做，没有内置能力可用。
+# 关掉默认的 chrono：那是给「列出回收站里有什么、什么时候扔的」用的，我们只调 delete()。
+# coinit_apartmentthreaded 保留——Windows 上它决定 COM 的公寓模式，不是可选的排场。
+trash = { version = "5.2.6", default-features = false, features = ["coinit_apartmentthreaded"] }

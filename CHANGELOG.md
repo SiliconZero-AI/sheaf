@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+You can delete drafts from the file panel now, and they go to the Recycle Bin.
+
+- **Right-click any draft in the left panel and there's a "Delete" item.** Getting rid of a scratch file used to mean opening File Explorer and finding it yourself.
+- **Deleted files go to the Recycle Bin, not into thin air.** Restore one from there if you change your mind — the same as deleting it in File Explorer.
+- **It asks first**, and shows the file name while it asks, so identically named files in different folders don't catch you out.
+- **If you delete the draft you're currently in, the canvas moves to the next one**; empty the folder entirely and the canvas clears, rather than leaving a draft pointing at a file that no longer exists.
+- When it can't delete something — the file is open in another program, or already gone — it says so on the spot and leaves the file alone.
+- Files only; folders are not deleted.
+
 ## 0.1.7 — 2026-08-27
 
 Your folders and reading positions no longer depend on browser storage, and the text size is remembered.

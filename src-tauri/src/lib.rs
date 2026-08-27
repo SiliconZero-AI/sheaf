@@ -21,6 +21,30 @@ fn take_pending_file(state: tauri::State<PendingFile>) -> Option<String> {
     state.0.lock().unwrap().take()
 }
 
+/// 把一个文件挪进系统回收站。**不是永久删除**——这是这条命令存在的全部理由。
+///
+/// `tauri-plugin-fs` 的 `remove()` 只能永久删，官方的 move-to-trash 需求
+/// （tauri#5680，2022 年开的）至今没做，所以没有内置路子，只能自己开一条。
+/// 走 `trash` crate 而不是手写 `SHFileOperationW`：Windows 上它用的是
+/// 微软自 Vista 起推荐的 `IFileOperation`，而且 mac/Linux 也一并有了。
+///
+/// 错误只回原文给前端打日志用，**不在这里拼给用户看的话**——
+/// 那属于 i18n，词典在 src/i18n/，Rust 这边不该有第二份中文。
+#[tauri::command]
+fn move_to_trash(path: String) -> Result<(), String> {
+    #[cfg(desktop)]
+    {
+        trash::delete(&path).map_err(|error| error.to_string())
+    }
+    // 移动端没有回收站这个概念，trash crate 也不支持——这条命令在那边不该被调到。
+    // 与其让它编不过，不如明确地失败：前端拿到 Err 会按「删不掉」提示，文件毫发无损。
+    #[cfg(not(desktop))]
+    {
+        let _ = path;
+        Err("trash is not available on this platform".to_string())
+    }
+}
+
 /// 让已经在跑的那个窗口自己跳到最前。光调 `set_focus()` 不够，实测（0.1.0 起就有）
 /// 双击第二篇 .md 时正文切过去了、窗口却留在后面，非得手点任务栏。
 ///
@@ -94,7 +118,7 @@ pub fn run() {
         .manage(PendingFile(Mutex::new(initial_path)))
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![take_pending_file])
+        .invoke_handler(tauri::generate_handler![take_pending_file, move_to_trash])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

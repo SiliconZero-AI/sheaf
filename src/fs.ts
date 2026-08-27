@@ -12,6 +12,7 @@ import {
   stat,
 } from "@tauri-apps/plugin-fs";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import { t } from "./i18n";
 import { parseAnchor, type DocAnchor } from "./anchor";
 import { isDesktop } from "./env";
@@ -427,6 +428,21 @@ export async function fileHandleIfExists(path: string): Promise<FileHandle | nul
 }
 
 /**
+ * 把一篇稿子挪进系统回收站。**不是永久删除**。
+ *
+ * 走的是 src-tauri 里自己开的 `move_to_trash` 命令，不是 `@tauri-apps/plugin-fs`
+ * 的 `remove()`——那个只能永久删，删完连回收站里都没有。因为不经 fs 插件，
+ * `capabilities/default.json` 一个字都不用改。
+ *
+ * 浏览器模式直接拒绝：那边没有回收站，能做的只有永久删，而这个函数承诺的是可还原。
+ * 左栏的删除入口本来也只在桌面壳出现，这里是第二道闸。
+ */
+export async function moveToTrash(path: string): Promise<void> {
+  if (!isDesktop) throw new Error("TRASH_UNAVAILABLE");
+  await invoke("move_to_trash", { path });
+}
+
+/**
  * `abs` 落在 `root` 里面就返回相对路径，否则 null。用来判断一个绝对路径
  * 到底是「某个工作区里的一篇」还是真散篇——判错的后果不是不高亮那么轻：
  * 误判成散篇，spaceId 和相对路径都会留空，那篇里所有相对路径的图会全变裂图。
@@ -654,6 +670,37 @@ export function firstFile(node: DirNode): FileNode | null {
     if (hit) return hit;
   }
   return null;
+}
+
+/** 把整棵树按左栏里看到的先后顺序摊平成一列文件。目录本身不进列表——它不可打开 */
+export function flattenFiles(node: DirNode): FileNode[] {
+  const out: FileNode[] = [];
+  for (const child of node.children) {
+    if (child.kind === "file") out.push(child);
+    else out.push(...flattenFiles(child));
+  }
+  return out;
+}
+
+/**
+ * 删掉 `path` 这一篇之后，该把哪一篇顶上来。
+ *
+ * **传进来的树必须是删除之前的那棵**——判据是「它原来排在谁后面」，
+ * 重扫之后那一篇已经不在了，无从谈起。所以顺序是：先算好接班的是谁，再删、再重扫。
+ *
+ * 取「下一篇」而不是「上一篇」：连着删几篇时，光标跟着往下走，
+ * 手不用动就能接着删；取上一篇的话每删一次都在往回跳。
+ * 排到最后一篇了才回头取上一篇；整个工作区被删空就返回 null，由调用方清空画布。
+ *
+ * 按摊平后的全局顺序找，不限定同一个目录：目录里最后一篇删掉后，
+ * 下一个自然是下个目录的第一篇——跟左栏里眼睛看到的顺序一致。
+ */
+export function nextAfterDelete(tree: DirNode, path: string): FileNode | null {
+  const files = flattenFiles(tree);
+  const at = files.findIndex((file) => file.path === path);
+  // 压根不在这棵树里：不该发生，但真发生了也不能瞎顶一篇上来
+  if (at < 0) return null;
+  return files[at + 1] ?? files[at - 1] ?? null;
 }
 
 export type TextEncoding = "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" | "legacy";
