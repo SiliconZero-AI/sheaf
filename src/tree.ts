@@ -144,6 +144,13 @@ export class FileTree {
    * （实测点击后约 50ms 发生），所以光靠 render() 里那次归还挡不住，要在开完之后再放一次。
    * 隔两帧是为了排在 restorePosition 那两层 requestAnimationFrame 后面。
    */
+  /** 把焦点放回当前选中的那一行。焦点被别人抢走后用它讨回来 */
+  focusActive(): void {
+    if (!this.activeKey) return;
+    const row = this.container.querySelector<HTMLElement>('[data-path][data-active="1"]');
+    row?.focus({ preventScroll: true });
+  }
+
   focusRow(spaceId: string, path: string): void {
     const put = () => {
       const row = this.container.querySelector<HTMLElement>(

@@ -296,7 +296,8 @@ const tree = new FileTree(
   dom.tree,
   (spaceId, node, intoEditor) => {
     // 点左栏 = 打开但焦点留在左栏（Del / 方向键才有得使）；回车 = 打开并把光标送进正文。
-    // 焦点要在开完之后再放一次：Vditor 的 setValue 会在这中间把它抢走
+    // 回车这一路必须同步改归属，否则上面那条「讨回焦点」的规则会把光标又弹回左栏
+    focusOwner = intoEditor ? "editor" : "tree";
     void openFile(spaceId, node, intoEditor).then(() => {
       if (!intoEditor) tree.focusRow(spaceId, node.path);
     });
@@ -499,6 +500,8 @@ function restorePosition(position: FilePosition | null, focus: boolean): void {
     const root = scrollerEl();
     if (!root) return;
     if (focus) {
+      // 这条路是主动把光标送进正文（双击 .md 进来、或按回车），归属跟着交出去
+      focusOwner = "editor";
       // 有记录就回记录处；没有才落到正文末尾（末尾是唯一「敲下去只会追加」的落点）
       if (position?.cursor && applyCursorAnchor(root, position.cursor)) editor.focus();
       else focusEditorEnd();
@@ -2160,6 +2163,49 @@ dom.fileInput.addEventListener("change", async () => {
 document.addEventListener("beforeinput", () => {
   lastDeleted = null;
 }, true);
+
+// ---------- 焦点归谁 ----------
+//
+// 左栏要能用 Del 和方向键，前提是焦点真的待在左栏。难点在于 Vditor 每次被重灌正文
+// （`setValue`）都会把焦点抢进编辑区，而重灌的入口有七处：切稿、外部改动同步、
+// 冲突解决、语言切换重建、欢迎页……逐个在后面补一句「把焦点还回去」是补不干净的，
+// 将来任谁新加一处调用就又漏了。
+//
+// 2026-08-27 真机复现的正是这种漏法：点左栏一篇 → 我在开完之后还了一次焦点（150ms，成功），
+// 但因为上一篇是脏的，切稿前那次保存写盘触发了文件监听，约 900ms 后走完
+// 「外部改动同步」又重灌了一次正文，焦点第二次被抢走。用户看到的就是「点了左栏，
+// 光标却在正文里，按 Del 删的是字」。而先点别的文件再点回来就正常——那时文档不脏，
+// 没有那次保存，也就没有后面那条链。
+//
+// 所以改成记「用户最后一次**亲手**把焦点放在哪儿」，谁抢走就讨回来。
+// 判据是用户的真实手势（按下鼠标、在左栏敲方向键、按回车进正文），
+// 程序自己的 focus() 不算——这样就跟有几处 setValue 无关了。
+type FocusOwner = "tree" | "editor";
+let focusOwner: FocusOwner = "editor";
+
+function inEditor(node: EventTarget | null): boolean {
+  return node instanceof Node && dom.editor.contains(node);
+}
+
+document.addEventListener(
+  "mousedown",
+  (event) => {
+    if (inEditor(event.target)) focusOwner = "editor";
+    else if (event.target instanceof Node && dom.tree.contains(event.target)) focusOwner = "tree";
+  },
+  true,
+);
+
+document.addEventListener(
+  "focusin",
+  (event) => {
+    // 用户此刻的意图在左栏，编辑区却拿到了焦点——只可能是重灌正文时被抢的，讨回来
+    if (focusOwner !== "tree") return;
+    if (!inEditor(event.target)) return;
+    tree.focusActive();
+  },
+  true,
+);
 
 window.addEventListener("keydown", (event) => {
   const mod = event.ctrlKey || event.metaKey;
