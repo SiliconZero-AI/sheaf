@@ -83,6 +83,7 @@ export interface Dict {
     howtoExport: string;
     /** 每篇记住上次读到哪 */
     howtoResume: string;
+    howtoDelete: string;
     howtoZoomDiagram: string;
     howtoUpdate: string;
     shortcutsTitle: string;
@@ -160,6 +161,26 @@ export interface Dict {
     checking: string;
     upToDate: string;
     checkFailed: string;
+  };
+  /** 删除文件：右键菜单那一项 + 确认框 + 删完/删不掉的反馈 */
+  del: {
+    /** 右键菜单里的那一项 */
+    menu: string;
+    title: string;
+    cancel: string;
+    /** 主按钮写「移到回收站」而不是「删除」——说清去了哪儿，用户才敢按 */
+    confirm: string;
+    closeTitle: string;
+    /** 「会移到回收站，之后还能还原」。这是本框最要紧的一句：它决定用户按不按 */
+    safe: string;
+    /** 删成功后的提示，带文件名 */
+    done: (name: string) => string;
+    /** 删不掉（被别的程序占用、只读、没权限）。原因原文进控制台，这里只给人话 */
+    failed: string;
+    /** Ctrl+Z 把刚删的那篇捞回来了 */
+    undone: (name: string) => string;
+    /** 捞不回来：已被人从回收站清掉、原位置又出现了同名文件、或者这个系统没有还原能力 */
+    undoFailed: string;
   };
   meta: {
     charCount: (n: number) => string;

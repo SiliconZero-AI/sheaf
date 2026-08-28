@@ -74,11 +74,12 @@ export const en: Dict = {
       "🔄 <strong>Share a folder with your other tools</strong> — when an AI tool or another editor changes a file, the draft here updates on its own; if you have unsaved edits, it asks which version to keep first",
     highlightTools: "🔍 <strong>Find, outline, undo — nothing missing</strong>—every one is a complete, working feature",
     howtoTitle: "⚡ How to use it (30 seconds)",
-    howtoOpenFolder: "📂 “Open Folder” in the top bar → every draft inside shows up on the left, click one to write",
+    howtoOpenFolder: "📂 “Open Folder” in the top bar → every draft inside shows up on the left; click one to open it, arrow keys move between drafts, Enter (or a click in the text) starts writing",
     howtoAutosave: "✍️ Just write — it autosaves two seconds after you stop, no need to remember Ctrl+S",
     howtoImages: "🖼️ Paste or drag in images — they're saved automatically into <code>images/</code> next to the draft",
     howtoTable: "📊 Put your cursor in a table and row/column buttons pop up in the top-right corner",
     howtoResume: "📖 Every draft remembers where you left off — switch away or restart, you land back in the same place",
+    howtoDelete: "🗑️ Right-click any draft on the left (or select it and press Del) to delete it — it asks first, it goes to the Recycle Bin, and Ctrl+Z right after undoes it",
     howtoZoomDiagram:
       "🔎 Hover an image or a diagram and a button appears in its corner — open it full screen, scroll to zoom, drag to pan, Esc to close",
     howtoUpdate:
@@ -153,6 +154,18 @@ export const en: Dict = {
     checking: "Checking for updates…",
     upToDate: "You are on the latest version",
     checkFailed: "Could not check for updates — you may be offline",
+  },
+  del: {
+    menu: "Delete",
+    title: "Delete this file?",
+    cancel: "Cancel",
+    confirm: "Move to Recycle Bin",
+    closeTitle: "Cancel Esc",
+    safe: "Goes to the Recycle Bin — press Ctrl+Z if you change your mind",
+    done: (name) => `Moved “${name}” to the Recycle Bin`,
+    failed: "Could not delete it. The file may already be gone, or open in another program",
+    undone: (name) => `Restored “${name}”`,
+    undoFailed: "Could not restore it. It may have been emptied from the Recycle Bin, or something with the same name is back in its place",
   },
   meta: {
     charCount: (n) => `${n} chars`,

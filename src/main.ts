@@ -40,6 +40,9 @@ import {
   scanTree,
   uniqueName,
   writeFile,
+  moveToTrash,
+  restoreFromTrash,
+  nextAfterDelete,
   type DirNode,
   type FileNode,
   type TextEncoding,
@@ -135,6 +138,13 @@ const dom = {
   conflictKeepMine: need<HTMLButtonElement>("#conflict-keep-mine"),
   conflictKeepDisk: need<HTMLButtonElement>("#conflict-keep-disk"),
   conflictLater: need<HTMLButtonElement>("#conflict-later"),
+  deleteMask: need<HTMLDivElement>("#delete-mask"),
+  deleteBox: need<HTMLDivElement>("#delete-box"),
+  deleteFile: need<HTMLElement>("#delete-file"),
+  deleteFailed: need<HTMLParagraphElement>("#delete-failed"),
+  deleteClose: need<HTMLButtonElement>("#delete-close"),
+  deleteCancel: need<HTMLButtonElement>("#delete-cancel"),
+  deleteConfirm: need<HTMLButtonElement>("#delete-confirm"),
   helpCheck: need<HTMLButtonElement>("#help-check"),
   helpCheckStatus: need<HTMLSpanElement>("#help-check-status"),
   updateMask: need<HTMLDivElement>("#update-mask"),
@@ -284,10 +294,18 @@ mountEditor();
 
 const tree = new FileTree(
   dom.tree,
-  (spaceId, node) => void openFile(spaceId, node),
+  (spaceId, node, intoEditor) => {
+    // 点左栏 = 打开但焦点留在左栏（Del / 方向键才有得使）；回车 = 打开并把光标送进正文。
+    // 回车这一路必须同步改归属，否则上面那条「讨回焦点」的规则会把光标又弹回左栏
+    focusOwner = intoEditor ? "editor" : "tree";
+    void openFile(spaceId, node, intoEditor).then(() => {
+      if (!intoEditor) tree.focusRow(spaceId, node.path);
+    });
+  },
   (spaceId) => void removeSpace(spaceId),
   () => void pickDirectory(),
   () => void resumePending(),
+  (spaceId, node) => askDelete(spaceId, node),
 );
 const outline = new Outline(dom.outline, jumpToHeading);
 const globalSearch = new GlobalSearch(
@@ -482,6 +500,8 @@ function restorePosition(position: FilePosition | null, focus: boolean): void {
     const root = scrollerEl();
     if (!root) return;
     if (focus) {
+      // 这条路是主动把光标送进正文（双击 .md 进来、或按回车），归属跟着交出去
+      focusOwner = "editor";
       // 有记录就回记录处；没有才落到正文末尾（末尾是唯一「敲下去只会追加」的落点）
       if (position?.cursor && applyCursorAnchor(root, position.cursor)) editor.focus();
       else focusEditorEnd();
@@ -1124,6 +1144,8 @@ function escapeHtml(text: string): string {
 // ---------- 新建 ----------
 
 async function createNewFile(): Promise<void> {
+  // 新建也算「做了别的」，Ctrl+Z 交还给正文
+  lastDeleted = null;
   const space = currentSpace() ?? state.spaces[0] ?? null;
   if (!space) {
     editor.tip(t().tip.needFolderForNewFile, 5000);
@@ -1245,6 +1267,163 @@ async function removeSpace(id: string): Promise<void> {
   editor.tip(t().tip.removedFromList(gone.tree.name), 4000);
 }
 
+// ---------- 删除文件 ----------
+//
+// 全应用唯一一处会动用户磁盘文件的地方。三条规矩钉死：
+// 确认挡在真删之前；进回收站不永久删；删完不能把它又写回去。
+// 最后那条不是多虑，见下面 doDelete 里的注释。
+
+/** 正等着用户确认的那一篇。null = 框没开着 */
+let pendingDelete: { spaceId: string; node: FileNode } | null = null;
+
+/**
+ * 刚删掉的那一篇，留着给 Ctrl+Z 捞回来。null = 现在按 Ctrl+Z 是撤销打字。
+ *
+ * **只有「刚删完、还没做别的」那一下才算数**，这是有意收窄的：
+ * Ctrl+Z 在正文里的本职是撤销打字，两件事抢同一个键，就必须有一个让位。
+ * 让位的规矩跟 VS Code 一样——删完立刻按，撤销的是删除；只要你开始打字、切了稿子、
+ * 又删了一篇，它就交还给正文。这样谁也不会「按下去发现撤销错了东西」。
+ *
+ * 清除点散在几处（markDirty / doOpenFile / createNewFile / 再删一次 / 撤销成功），
+ * 少一处的后果是「过了很久按 Ctrl+Z，一个早忘了的文件突然冒出来」。
+ */
+let lastDeleted: {
+  /** 磁盘绝对路径，还原时要拿它去回收站里认领 */
+  abs: string;
+  spaceId: string;
+  /** 相对工作区的路径，还原后要靠它在重扫出来的树里找回节点 */
+  treePath: string;
+  name: string;
+  /** 删的时候它正开在画布上——撤销之后就该跳回它 */
+  wasCurrent: boolean;
+} | null = null;
+
+function askDelete(spaceId: string, node: FileNode): void {
+  pendingDelete = { spaceId, node };
+  dom.deleteFile.textContent = node.path || node.name;
+  dom.deleteFailed.hidden = true;
+  dom.deleteMask.hidden = false;
+  // 焦点给容器不给按钮，跟冲突框同一条规矩：用户正在打字时不能让一个空格
+  // 就替他按下「移到回收站」。Tab 一下就能走到按钮，但那是明确操作
+  dom.deleteBox.focus();
+}
+
+function hideDelete(): void {
+  dom.deleteMask.hidden = true;
+  pendingDelete = null;
+}
+
+/**
+ * 真删。顺序是有讲究的，换一步就出错：
+ *
+ * 1. **先算接班的是谁**——判据是「它原来排在谁后面」，等重扫完那一篇已经不在树里了。
+ * 2. 挪进回收站。失败就地报错、什么都不动，框留着让用户看见原因。
+ * 3. **删的正好是画布上这篇的话，先把 state.file / dirty 清掉，再切下一篇。**
+ *    不清的话 doOpenFile 开头那道「切走前先保存上一篇」会照常跑，
+ *    而它写的就是刚删掉的那个句柄——文件会被原封不动地写回磁盘，删了等于没删。
+ *    顺带这也让 savePositionNow() 拿不到 key，不会给一篇已经不存在的稿子记位置。
+ * 4. 重扫左栏。手动扫而不是等 watch：watch 有 600ms 防抖，那一行赖着不走看着像坏了，
+ *    而且浏览器模式压根没有 watch。稍后 watch 那次重扫是同一份结果，幂等。
+ *
+ * 用户在这篇里有没有没保存的改动，这里**不额外拦一道**——
+ * 「删掉」本身就是「这篇我不要了」，再问一次是把决定推回给已经做完决定的人。
+ */
+async function doDelete(): Promise<void> {
+  if (!pendingDelete) return;
+  const { spaceId, node } = pendingDelete;
+  const space = state.spaces.find((item) => item.id === spaceId);
+  if (!space) {
+    hideDelete();
+    return;
+  }
+  const abs = loosePathOf(node.handle);
+  if (!abs) {
+    dom.deleteFailed.textContent = t().del.failed;
+    dom.deleteFailed.hidden = false;
+    return;
+  }
+
+  const successor = nextAfterDelete(space.tree, node.path);
+  const wasCurrent = state.spaceId === spaceId && state.path === node.path;
+
+  try {
+    await moveToTrash(abs);
+  } catch (error) {
+    // 原因原文只进控制台：可能是 Windows 的英文错误串，给用户看没有意义
+    console.error("[Sheaf] 移到回收站失败", abs, error);
+    dom.deleteFailed.textContent = t().del.failed;
+    dom.deleteFailed.hidden = false;
+    return;
+  }
+
+  const name = node.name;
+  hideDelete();
+
+  if (wasCurrent) {
+    // 见上面第 3 条：这两行必须在 openFile 之前。
+    // 拆掉任意一行都会复现「树里删了、磁盘上还在，而且带着刚敲的字」——2026-08-27 实测过
+    state.file = null;
+    state.dirty = false;
+  }
+
+  await rescan(space);
+
+  if (wasCurrent) {
+    if (successor) {
+      await openFile(spaceId, successor);
+    } else {
+      // 整个工作区被删空了：清空画布，不留一篇指向已删文件的半截状态
+      images.reset();
+      setDoc(null, "", "", "");
+      editor.setValue("", true);
+      tree.setActive(null, null);
+      refreshMeta();
+      refreshWatchers();
+    }
+  }
+
+  // 必须放在上面那次 openFile 之后：doOpenFile 里会清掉 lastDeleted（切稿就把 Ctrl+Z 交还给正文），
+  // 写在前面会被自己刚触发的那次自动切稿当场抹掉，撤销就永远按不动
+  lastDeleted = { abs, spaceId, treePath: node.path, name, wasCurrent };
+  editor.tip(t().del.done(name), 4000);
+}
+
+/**
+ * Ctrl+Z：把刚删的那一篇从回收站捞回来。
+ *
+ * 只在 `lastDeleted` 还有效时被调到——键盘那头已经判过了，这里不再判一次，
+ * 免得两处规则各自演化、慢慢对不上。
+ *
+ * 无论成败都先把 `lastDeleted` 清掉：成了自然不该再撤一次；败了也不该留着，
+ * 否则用户会对着同一堵墙反复按同一个键，而每按一次都要现列一遍整个回收站。
+ */
+async function undoDelete(): Promise<void> {
+  if (!lastDeleted) return;
+  const { abs, spaceId, treePath, name, wasCurrent } = lastDeleted;
+  lastDeleted = null;
+
+  try {
+    await restoreFromTrash(abs);
+  } catch (error) {
+    // 原因原文只进控制台：多半是 Windows 的英文错误串，给用户看没有意义
+    console.error("[Sheaf] 从回收站还原失败", abs, error);
+    editor.tip(t().del.undoFailed, 6000);
+    return;
+  }
+
+  const space = state.spaces.find((item) => item.id === spaceId);
+  if (space) {
+    await rescan(space);
+    // 删的时候画布被迫跳走了，撤销就该跳回来——不然「撤销」只撤了一半。
+    // 删的是别的稿子时不抢焦点：用户没打算离开正在写的这篇
+    if (wasCurrent) {
+      const node = findFile(space.tree, treePath);
+      if (node) await openFile(spaceId, node);
+    }
+  }
+  editor.tip(t().del.undone(name), 4000);
+}
+
 function setDoc(
   handle: FileHandle | null,
   spaceId: string,
@@ -1296,6 +1475,9 @@ function openFile(spaceId: string, node: FileNode, focus = false): Promise<void>
 }
 
 async function doOpenFile(spaceId: string, node: FileNode, focus = false): Promise<void> {
+  // 换了一篇，Ctrl+Z 就该回去撤销打字，不再撤销上一次删文件。
+  // 注意 doDelete 里那次自动切稿也会走到这儿，所以它把 lastDeleted 设在 openFile 之后
+  lastDeleted = null;
   // 上一篇没存成功就别切走，否则那些改动会被 setValue 直接盖掉
   if (state.dirty && state.file && !(await save())) {
     editor.tip(t().tip.unsavedBeforeSwitch, 5000);
@@ -1967,6 +2149,64 @@ dom.fileInput.addEventListener("change", async () => {
   }
 });
 
+/**
+ * 用户一开始打字，Ctrl+Z 就交还给正文（见 lastDeleted 那段注释）。
+ *
+ * **判据选 `beforeinput` 而不是 markDirty**：它在内容真正改变之前**同步**触发，
+ * 不经过 Vditor 的 input 回调链路，因此不依赖那边的防抖与实现细节；IME 组合输入也照样发。
+ * markDirty 那条路真机实测也是够快的（2026-08-27 用 CDP 真实输入验过），
+ * 但它是「保存」这条流水线的节拍，把「Ctrl+Z 归谁」挂上去等于给两件事绑了同一根绳子，
+ * 哪天 Vditor 换了回调时序就会悄悄失准。这里要的是一个跟编辑器内部无关的、最早的信号。
+ *
+ * 捕获阶段挂 document：编辑器是全场唯一的 contenteditable，不会被别的输入误触。
+ */
+document.addEventListener("beforeinput", () => {
+  lastDeleted = null;
+}, true);
+
+// ---------- 焦点归谁 ----------
+//
+// 左栏要能用 Del 和方向键，前提是焦点真的待在左栏。难点在于 Vditor 每次被重灌正文
+// （`setValue`）都会把焦点抢进编辑区，而重灌的入口有七处：切稿、外部改动同步、
+// 冲突解决、语言切换重建、欢迎页……逐个在后面补一句「把焦点还回去」是补不干净的，
+// 将来任谁新加一处调用就又漏了。
+//
+// 2026-08-27 真机复现的正是这种漏法：点左栏一篇 → 我在开完之后还了一次焦点（150ms，成功），
+// 但因为上一篇是脏的，切稿前那次保存写盘触发了文件监听，约 900ms 后走完
+// 「外部改动同步」又重灌了一次正文，焦点第二次被抢走。用户看到的就是「点了左栏，
+// 光标却在正文里，按 Del 删的是字」。而先点别的文件再点回来就正常——那时文档不脏，
+// 没有那次保存，也就没有后面那条链。
+//
+// 所以改成记「用户最后一次**亲手**把焦点放在哪儿」，谁抢走就讨回来。
+// 判据是用户的真实手势（按下鼠标、在左栏敲方向键、按回车进正文），
+// 程序自己的 focus() 不算——这样就跟有几处 setValue 无关了。
+type FocusOwner = "tree" | "editor";
+let focusOwner: FocusOwner = "editor";
+
+function inEditor(node: EventTarget | null): boolean {
+  return node instanceof Node && dom.editor.contains(node);
+}
+
+document.addEventListener(
+  "mousedown",
+  (event) => {
+    if (inEditor(event.target)) focusOwner = "editor";
+    else if (event.target instanceof Node && dom.tree.contains(event.target)) focusOwner = "tree";
+  },
+  true,
+);
+
+document.addEventListener(
+  "focusin",
+  (event) => {
+    // 用户此刻的意图在左栏，编辑区却拿到了焦点——只可能是重灌正文时被抢的，讨回来
+    if (focusOwner !== "tree") return;
+    if (!inEditor(event.target)) return;
+    tree.focusActive();
+  },
+  true,
+);
+
 window.addEventListener("keydown", (event) => {
   const mod = event.ctrlKey || event.metaKey;
   if (!mod) return;
@@ -1992,6 +2232,12 @@ window.addEventListener("keydown", (event) => {
   } else if (event.shiftKey && key === "k") {
     event.preventDefault();
     dom.imageInput.click();
+  } else if (key === "z" && !event.shiftKey && lastDeleted) {
+    // 刚删完文件的那一下，Ctrl+Z 撤销的是删除。
+    // lastDeleted 为空时**什么都不做也不拦**，原样放给 Vditor 去撤销打字——
+    // 这个键的本职是那个，抢过来不还就是在给用户添乱
+    event.preventDefault();
+    void undoDelete();
   }
 });
 
@@ -2037,6 +2283,22 @@ dom.conflictLater.addEventListener("click", () => dismissConflict());
 dom.conflictClose.addEventListener("click", () => dismissConflict());
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !dom.conflictMask.hidden) dismissConflict();
+});
+
+dom.deleteConfirm.addEventListener("click", () => void doDelete());
+dom.deleteCancel.addEventListener("click", () => hideDelete());
+dom.deleteClose.addEventListener("click", () => hideDelete());
+// 点遮罩空白处也算取消。删除框跟冲突框不同：冲突是「必须选一个」，
+// 删除是「不选就等于不删」，所以出路给得越多越好
+dom.deleteMask.addEventListener("mousedown", (event) => {
+  if (event.target === dom.deleteMask) hideDelete();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !dom.deleteMask.hidden) {
+    // 别让这一下 Esc 顺带被查找框、灯箱之类的也收走
+    event.stopPropagation();
+    hideDelete();
+  }
 });
 dom.saveLabel.addEventListener("click", () => {
   if (state.conflict) showConflict();

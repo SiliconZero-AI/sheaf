@@ -30,6 +30,9 @@
   --code-bg: #f1f6f4;
   --quote-bar: #cbdfd9;
   --warn: #a3701f;
+  /* 删除这类会动磁盘的动作。压过一档饱和度，跟薄荷底配得上，也不至于像报错弹窗 */
+  --danger: #b8503c;
+  --danger-ink: #ffffff;
   --hit: rgba(58, 163, 140, 0.22);
   --hit-now: #3aa38c;
   --hit-now-ink: #ffffff;
@@ -74,6 +77,8 @@
   --code-bg: #11161d;
   --quote-bar: #39414f;
   --warn: #dda75f;
+  --danger: #c9604a;
+  --danger-ink: #ffffff;
   --hit: rgba(123, 165, 245, 0.24);
   --hit-now: #7ba5f5;
   --hit-now-ink: #10182a;
@@ -1781,6 +1786,79 @@ body {
   filter: none;
   opacity: 0.55;
   cursor: default;
+}
+
+/* ---------- 右键菜单 + 删除确认 ---------- */
+/* 遮罩、外框、头尾照旧复用 .conflict-* —— 这是第三个用它的框（冲突 / 更新 / 删除）。
+   这里只补三样：菜单本身、危险色的主按钮、比另外两个框窄一点的外框。 */
+
+.ctx-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 132px;
+  padding: 4px;
+  background: var(--float);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+}
+
+.ctx-item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font: 400 12.5px/1 var(--font-ui);
+  color: var(--ink-2);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ctx-item:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+/* 会动磁盘的那一项画成危险色。悬停时整条铺红底：手已经在这一行上了，
+   再靠一个小色差提醒等于没提醒 */
+.ctx-item[data-danger="1"] {
+  color: var(--danger);
+}
+
+.ctx-item[data-danger="1"]:hover {
+  background: var(--danger);
+  color: var(--danger-ink);
+}
+
+/* 删除框只有一句话和两个按钮，用冲突框那个 560px 会空得发虚 */
+.conflict-box.is-narrow {
+  width: min(420px, 100%);
+}
+
+/* 文件名要能完整看见。长路径换行，不省略成「…」——
+   省略号会把「删的到底是哪个目录下的同名文件」这个关键信息藏掉 */
+#delete-file {
+  word-break: break-all;
+}
+
+.delete-now {
+  appearance: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 14px;
+  background: var(--danger);
+  font: 500 12.5px/1 var(--font-ui);
+  color: var(--danger-ink);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.delete-now:hover {
+  filter: brightness(1.08);
 }
 
 /* ---------- 图片 / 流程图放大看 ---------- */
