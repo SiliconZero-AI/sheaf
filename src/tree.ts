@@ -31,7 +31,7 @@ export class FileTree {
 
   constructor(
     private container: HTMLElement,
-    private onOpen: (spaceId: string, node: FileNode) => void,
+    private onOpen: (spaceId: string, node: FileNode, intoEditor: boolean) => void,
     private onRemove: (spaceId: string) => void,
     private onPickDir: () => void,
     private onResume: () => void,
@@ -55,7 +55,47 @@ export class FileTree {
           { label: t().del.menu, danger: true, run: () => this.onDelete(spaceId, node) },
         ]);
       });
+
+      // Del 键删掉选中的那一篇，走的是跟右键菜单同一个回调、同一个确认框。
+      // 监听挂在树容器上而不是 window：焦点在正文时这里根本收不到事件，
+      // 所以正文里按 Del 照常删字符，两件事不会打架
+      this.container.addEventListener("keydown", (event) => {
+        if (event.key !== "Delete") return;
+        const row = (event.target as HTMLElement).closest<HTMLElement>("[data-path]");
+        if (!row || row.dataset.kind !== "file") return;
+        const node = this.find(row.dataset.space ?? "", row.dataset.path ?? "");
+        if (!node) return;
+        event.preventDefault();
+        this.onDelete(row.dataset.space ?? "", node);
+      });
     }
+
+    // 上下走 + 回车进正文。这两样是「焦点留在左栏」的配套：
+    // 焦点既然不再被正文抢走，就得让它在左栏里能动、也能主动交出去，
+    // 否则用户点完一篇会卡在一个不能打字也不能翻的地方
+    this.container.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        const rows = [...this.container.querySelectorAll<HTMLElement>("[data-path]")];
+        const at = rows.indexOf(
+          (event.target as HTMLElement).closest<HTMLElement>("[data-path]") as HTMLElement,
+        );
+        if (at < 0) return;
+        const next = rows[at + (event.key === "ArrowDown" ? 1 : -1)];
+        if (!next) return;
+        // 到头就停住，不绕回另一端——绕回去会让人以为自己按错了方向
+        event.preventDefault();
+        next.focus();
+        return;
+      }
+      if (event.key !== "Enter") return;
+      const row = (event.target as HTMLElement).closest<HTMLElement>("[data-path]");
+      if (!row || row.dataset.kind !== "file") return;
+      const node = this.find(row.dataset.space ?? "", row.dataset.path ?? "");
+      if (!node) return;
+      // button 收到回车会自己派发一次 click（那条路是「不进正文」），拦掉免得开两次
+      event.preventDefault();
+      this.onOpen(row.dataset.space ?? "", node, true);
+    });
 
     this.container.addEventListener("click", (event) => {
       const target = event.target as HTMLElement;
@@ -85,7 +125,9 @@ export class FileTree {
         return;
       }
       const node = this.find(spaceId, path);
-      if (node) this.onOpen(spaceId, node);
+      // 打开它，但光标不进正文——焦点留在左栏，Del 和方向键才有得使。
+      // 跟资源管理器 / VS Code 同一个规矩：想写字按回车（或者点一下正文）
+      if (node) this.onOpen(spaceId, node, false);
     });
   }
 
@@ -93,6 +135,23 @@ export class FileTree {
     this.spaces = spaces;
     this.pending = pending;
     this.render();
+  }
+
+  /**
+   * 把键盘焦点放到某一行上。
+   *
+   * 给「点了左栏某篇」那条路用：打开文件的过程里 Vditor 的 setValue 会把焦点抢进正文
+   * （实测点击后约 50ms 发生），所以光靠 render() 里那次归还挡不住，要在开完之后再放一次。
+   * 隔两帧是为了排在 restorePosition 那两层 requestAnimationFrame 后面。
+   */
+  focusRow(spaceId: string, path: string): void {
+    const put = () => {
+      const row = this.container.querySelector<HTMLElement>(
+        `[data-space="${CSS.escape(spaceId)}"][data-path="${CSS.escape(path)}"]`,
+      );
+      row?.focus({ preventScroll: true });
+    };
+    requestAnimationFrame(() => requestAnimationFrame(put));
   }
 
   setActive(spaceId: string | null, path: string | null): void {
@@ -112,6 +171,17 @@ export class FileTree {
   }
 
   private render(): void {
+    // 整棵重建会把当前聚焦的那个按钮一起扔掉，焦点掉回 body。
+    // 平时看不出来，但键盘操作全靠它：点一下某篇 → setActive 触发重渲染 → 焦点没了 →
+    // 这时按 Del 什么都不会发生。所以重建前记下焦点落在哪一行，建完还回去。
+    const focusedRow =
+      this.container.contains(document.activeElement) && document.activeElement instanceof HTMLElement
+        ? (document.activeElement.closest<HTMLElement>("[data-path]") ?? null)
+        : null;
+    const refocus = focusedRow
+      ? { space: focusedRow.dataset.space ?? "", path: focusedRow.dataset.path ?? "" }
+      : null;
+
     this.container.textContent = "";
 
     // 待恢复的文件夹排在最上面：让人一眼看到「我的文件夹在这儿，点一下就回来」
@@ -181,6 +251,16 @@ export class FileTree {
       if (!folded) {
         this.container.append(this.renderList(space.id, space.tree.children, 0));
       }
+    }
+
+    // 把焦点还给重建之前的那一行。找不到（那一篇刚被删掉、或者折叠起来了）就不还——
+    // 硬塞给别的行等于替用户挪了光标，比丢焦点更莫名其妙
+    if (refocus) {
+      const again = this.container.querySelector<HTMLElement>(
+        `[data-space="${CSS.escape(refocus.space)}"][data-path="${CSS.escape(refocus.path)}"]`,
+      );
+      // preventScroll：还焦点是我们自作主张的动作，不该顺带把左栏滚到别处
+      again?.focus({ preventScroll: true });
     }
   }
 

@@ -41,6 +41,7 @@ import {
   uniqueName,
   writeFile,
   moveToTrash,
+  restoreFromTrash,
   nextAfterDelete,
   type DirNode,
   type FileNode,
@@ -293,7 +294,13 @@ mountEditor();
 
 const tree = new FileTree(
   dom.tree,
-  (spaceId, node) => void openFile(spaceId, node),
+  (spaceId, node, intoEditor) => {
+    // 点左栏 = 打开但焦点留在左栏（Del / 方向键才有得使）；回车 = 打开并把光标送进正文。
+    // 焦点要在开完之后再放一次：Vditor 的 setValue 会在这中间把它抢走
+    void openFile(spaceId, node, intoEditor).then(() => {
+      if (!intoEditor) tree.focusRow(spaceId, node.path);
+    });
+  },
   (spaceId) => void removeSpace(spaceId),
   () => void pickDirectory(),
   () => void resumePending(),
@@ -1134,6 +1141,8 @@ function escapeHtml(text: string): string {
 // ---------- 新建 ----------
 
 async function createNewFile(): Promise<void> {
+  // 新建也算「做了别的」，Ctrl+Z 交还给正文
+  lastDeleted = null;
   const space = currentSpace() ?? state.spaces[0] ?? null;
   if (!space) {
     editor.tip(t().tip.needFolderForNewFile, 5000);
@@ -1264,6 +1273,28 @@ async function removeSpace(id: string): Promise<void> {
 /** 正等着用户确认的那一篇。null = 框没开着 */
 let pendingDelete: { spaceId: string; node: FileNode } | null = null;
 
+/**
+ * 刚删掉的那一篇，留着给 Ctrl+Z 捞回来。null = 现在按 Ctrl+Z 是撤销打字。
+ *
+ * **只有「刚删完、还没做别的」那一下才算数**，这是有意收窄的：
+ * Ctrl+Z 在正文里的本职是撤销打字，两件事抢同一个键，就必须有一个让位。
+ * 让位的规矩跟 VS Code 一样——删完立刻按，撤销的是删除；只要你开始打字、切了稿子、
+ * 又删了一篇，它就交还给正文。这样谁也不会「按下去发现撤销错了东西」。
+ *
+ * 清除点散在几处（markDirty / doOpenFile / createNewFile / 再删一次 / 撤销成功），
+ * 少一处的后果是「过了很久按 Ctrl+Z，一个早忘了的文件突然冒出来」。
+ */
+let lastDeleted: {
+  /** 磁盘绝对路径，还原时要拿它去回收站里认领 */
+  abs: string;
+  spaceId: string;
+  /** 相对工作区的路径，还原后要靠它在重扫出来的树里找回节点 */
+  treePath: string;
+  name: string;
+  /** 删的时候它正开在画布上——撤销之后就该跳回它 */
+  wasCurrent: boolean;
+} | null = null;
+
 function askDelete(spaceId: string, node: FileNode): void {
   pendingDelete = { spaceId, node };
   dom.deleteFile.textContent = node.path || node.name;
@@ -1348,7 +1379,46 @@ async function doDelete(): Promise<void> {
     }
   }
 
+  // 必须放在上面那次 openFile 之后：doOpenFile 里会清掉 lastDeleted（切稿就把 Ctrl+Z 交还给正文），
+  // 写在前面会被自己刚触发的那次自动切稿当场抹掉，撤销就永远按不动
+  lastDeleted = { abs, spaceId, treePath: node.path, name, wasCurrent };
   editor.tip(t().del.done(name), 4000);
+}
+
+/**
+ * Ctrl+Z：把刚删的那一篇从回收站捞回来。
+ *
+ * 只在 `lastDeleted` 还有效时被调到——键盘那头已经判过了，这里不再判一次，
+ * 免得两处规则各自演化、慢慢对不上。
+ *
+ * 无论成败都先把 `lastDeleted` 清掉：成了自然不该再撤一次；败了也不该留着，
+ * 否则用户会对着同一堵墙反复按同一个键，而每按一次都要现列一遍整个回收站。
+ */
+async function undoDelete(): Promise<void> {
+  if (!lastDeleted) return;
+  const { abs, spaceId, treePath, name, wasCurrent } = lastDeleted;
+  lastDeleted = null;
+
+  try {
+    await restoreFromTrash(abs);
+  } catch (error) {
+    // 原因原文只进控制台：多半是 Windows 的英文错误串，给用户看没有意义
+    console.error("[Sheaf] 从回收站还原失败", abs, error);
+    editor.tip(t().del.undoFailed, 6000);
+    return;
+  }
+
+  const space = state.spaces.find((item) => item.id === spaceId);
+  if (space) {
+    await rescan(space);
+    // 删的时候画布被迫跳走了，撤销就该跳回来——不然「撤销」只撤了一半。
+    // 删的是别的稿子时不抢焦点：用户没打算离开正在写的这篇
+    if (wasCurrent) {
+      const node = findFile(space.tree, treePath);
+      if (node) await openFile(spaceId, node);
+    }
+  }
+  editor.tip(t().del.undone(name), 4000);
 }
 
 function setDoc(
@@ -1402,6 +1472,9 @@ function openFile(spaceId: string, node: FileNode, focus = false): Promise<void>
 }
 
 async function doOpenFile(spaceId: string, node: FileNode, focus = false): Promise<void> {
+  // 换了一篇，Ctrl+Z 就该回去撤销打字，不再撤销上一次删文件。
+  // 注意 doDelete 里那次自动切稿也会走到这儿，所以它把 lastDeleted 设在 openFile 之后
+  lastDeleted = null;
   // 上一篇没存成功就别切走，否则那些改动会被 setValue 直接盖掉
   if (state.dirty && state.file && !(await save())) {
     editor.tip(t().tip.unsavedBeforeSwitch, 5000);
@@ -2073,6 +2146,21 @@ dom.fileInput.addEventListener("change", async () => {
   }
 });
 
+/**
+ * 用户一开始打字，Ctrl+Z 就交还给正文（见 lastDeleted 那段注释）。
+ *
+ * **判据选 `beforeinput` 而不是 markDirty**：它在内容真正改变之前**同步**触发，
+ * 不经过 Vditor 的 input 回调链路，因此不依赖那边的防抖与实现细节；IME 组合输入也照样发。
+ * markDirty 那条路真机实测也是够快的（2026-08-27 用 CDP 真实输入验过），
+ * 但它是「保存」这条流水线的节拍，把「Ctrl+Z 归谁」挂上去等于给两件事绑了同一根绳子，
+ * 哪天 Vditor 换了回调时序就会悄悄失准。这里要的是一个跟编辑器内部无关的、最早的信号。
+ *
+ * 捕获阶段挂 document：编辑器是全场唯一的 contenteditable，不会被别的输入误触。
+ */
+document.addEventListener("beforeinput", () => {
+  lastDeleted = null;
+}, true);
+
 window.addEventListener("keydown", (event) => {
   const mod = event.ctrlKey || event.metaKey;
   if (!mod) return;
@@ -2098,6 +2186,12 @@ window.addEventListener("keydown", (event) => {
   } else if (event.shiftKey && key === "k") {
     event.preventDefault();
     dom.imageInput.click();
+  } else if (key === "z" && !event.shiftKey && lastDeleted) {
+    // 刚删完文件的那一下，Ctrl+Z 撤销的是删除。
+    // lastDeleted 为空时**什么都不做也不拦**，原样放给 Vditor 去撤销打字——
+    // 这个键的本职是那个，抢过来不还就是在给用户添乱
+    event.preventDefault();
+    void undoDelete();
   }
 });
 

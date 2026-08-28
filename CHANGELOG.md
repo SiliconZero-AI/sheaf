@@ -8,8 +8,11 @@ You can delete drafts from the file panel now, and they go to the Recycle Bin.
 - **Deleted files go to the Recycle Bin, not into thin air.** Restore one from there if you change your mind — the same as deleting it in File Explorer.
 - **It asks first**, and shows the file name while it asks, so identically named files in different folders don't catch you out.
 - **If you delete the draft you're currently in, the canvas moves to the next one**; empty the folder entirely and the canvas clears, rather than leaving a draft pointing at a file that no longer exists.
+- **Press Ctrl+Z right after and it comes back**, to exactly where it was; if you deleted the draft you were in, the canvas returns to it too. Only the moment right after counts — start typing and Ctrl+Z goes back to undoing your typing, so it never fires by mistake.
+- **Select a draft and press Del** to delete it, through the same confirmation.
 - When it can't delete something — the file is open in another program, or already gone — it says so on the spot and leaves the file alone.
 - Files only; folders are not deleted.
+- One change to how the file panel feels, needed for the above: **clicking a draft now keeps focus in the panel** (as File Explorer and VS Code do), so arrow keys move between drafts and Del works. Press Enter to put the cursor in the text and start writing.
 
 ## 0.1.7 — 2026-08-27
 

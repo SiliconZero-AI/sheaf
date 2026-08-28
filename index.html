@@ -284,13 +284,13 @@
             <section>
               <h3 data-i18n="help.howtoTitle">⚡ 怎么用（30 秒上手）</h3>
               <ul>
-                <li data-i18n="help.howtoOpenFolder">📂 顶栏「打开文件夹」→ 左栏出现里面所有稿子，点哪篇写哪篇</li>
+                <li data-i18n="help.howtoOpenFolder">📂 顶栏「打开文件夹」→ 左栏出现里面所有稿子，点一下就打开；方向键上下翻，按回车（或点一下正文）开始写</li>
                 <li data-i18n="help.howtoAutosave">✍️ 直接写，停笔两秒自动存盘，不用记得按 Ctrl+S</li>
                 <li data-i18n="help.howtoImages">🖼️ 图片粘贴或拖进来，自动存进稿子旁边的 <code>images/</code></li>
                 <li data-i18n="help.howtoTable">📊 光标停进表格，右上角自动冒出加行/加列按钮</li>
                 <li data-i18n="help.howtoExport">📤 顶栏「导出」可以存成 .md、网页，或直接打印成 PDF</li>
                 <li data-i18n="help.howtoResume">📖 每篇记得上次读到哪，切走再回来、关掉重开都落回原处</li>
-                <li data-i18n="help.howtoDelete">🗑️ 右键左栏任意一篇可以删掉它，删之前会先问一句，删掉的进回收站</li>
+                <li data-i18n="help.howtoDelete">🗑️ 右键左栏任意一篇（或选中后按 Del）可以删掉它，删之前会先问一句；删掉的进回收站，紧接着按 Ctrl+Z 能撤回</li>
                 <li data-i18n="help.howtoZoomDiagram">🔎 图片和流程图鼠标移上去，右上角冒出按钮，点开全屏看：滚轮缩放、按住拖动、Esc 关掉</li>
                 <li data-i18n="help.howtoUpdate">⬆️ 有新版会自己提示你，点一下就装好；也可以在下面手动查一次</li>
               </ul>
@@ -448,7 +448,7 @@
             <div class="conflict-foot">
               <span class="conflict-frozen">
                 <svg class="wd-line-icon" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M4 7h16" /><path d="M6.5 7l.8 11.6a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4L17.5 7" /></svg>
-                <span id="delete-safe" data-i18n="del.safe">会移到回收站，之后还能还原</span>
+                <span id="delete-safe" data-i18n="del.safe">会移到回收站，删错了按 Ctrl+Z 能撤回</span>
               </span>
               <span class="update-actions">
                 <button type="button" class="conflict-later" id="delete-cancel" data-i18n="del.cancel">取消</button>

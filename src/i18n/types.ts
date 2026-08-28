@@ -177,6 +177,10 @@ export interface Dict {
     done: (name: string) => string;
     /** 删不掉（被别的程序占用、只读、没权限）。原因原文进控制台，这里只给人话 */
     failed: string;
+    /** Ctrl+Z 把刚删的那篇捞回来了 */
+    undone: (name: string) => string;
+    /** 捞不回来：已被人从回收站清掉、原位置又出现了同名文件、或者这个系统没有还原能力 */
+    undoFailed: string;
   };
   meta: {
     charCount: (n: number) => string;

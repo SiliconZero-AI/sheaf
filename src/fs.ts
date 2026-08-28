@@ -443,6 +443,22 @@ export async function moveToTrash(path: string): Promise<void> {
 }
 
 /**
+ * 把刚扔进回收站的那个文件捞回原处。给「删错了按 Ctrl+Z」用。
+ *
+ * **Windows / Linux 独有**：列举和还原回收站的能力 macOS 那边没有
+ * （`trash` crate 的 `os_limited` 模块自己就是这么划的）。打 mac 包时这条一定失败，
+ * 撤销入口届时要跟着收掉——见 ROADMAP 第 9 条。
+ *
+ * 还原不成的情形都是真事：文件已被人从回收站清掉、原位置又出现了同名文件、
+ * 回收站被禁用。一律抛出去让调用方提示用户，**绝不静默当成功**——
+ * 那会让人以为文件回来了，过一会儿才发现没有。
+ */
+export async function restoreFromTrash(originalPath: string): Promise<void> {
+  if (!isDesktop) throw new Error("TRASH_UNAVAILABLE");
+  await invoke("restore_from_trash", { originalPath });
+}
+
+/**
  * `abs` 落在 `root` 里面就返回相对路径，否则 null。用来判断一个绝对路径
  * 到底是「某个工作区里的一篇」还是真散篇——判错的后果不是不高亮那么轻：
  * 误判成散篇，spaceId 和相对路径都会留空，那篇里所有相对路径的图会全变裂图。
