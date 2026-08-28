@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.8 — 2026-08-28
 
 You can delete drafts from the file panel now, and they go to the Recycle Bin.
 
