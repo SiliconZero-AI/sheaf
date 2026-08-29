@@ -66,6 +66,10 @@ import {
   positionKey,
   recallPositions,
   rememberPosition,
+  migrateRememberedPosition,
+  planMarkdownRename,
+  renamedFilePath,
+  renameMarkdownFile,
   recallZoom,
   rememberZoom,
   type FilePosition,
@@ -307,6 +311,7 @@ const tree = new FileTree(
   () => void pickDirectory(),
   () => void resumePending(),
   (spaceId, node) => askDelete(spaceId, node),
+  (spaceId, node, name) => renameTreeFile(spaceId, node, name),
 );
 const outline = new Outline(dom.outline, jumpToHeading);
 const globalSearch = new GlobalSearch(
@@ -1278,6 +1283,84 @@ async function removeSpace(id: string): Promise<void> {
   // 移出列表就别再盯着它了，否则那个文件夹一动还会触发一轮无谓的重扫
   refreshWatchers();
   editor.tip(t().tip.removedFromList(gone.tree.name), 4000);
+}
+
+// ---------- 文件重命名 ----------
+
+/**
+ * 工作区里的 Markdown 原地改名。正文 DOM、图片 blob 映射和大纲都不重建；
+ * 只换文件句柄与路径身份，这样选区、滚动位置和正在看的图片不会闪一下又重来。
+ */
+async function renameTreeFile(spaceId: string, node: FileNode, input: string): Promise<boolean> {
+  const plan = planMarkdownRename(node.name, input);
+  if (!plan.ok) {
+    if (plan.reason === "unchanged") return true;
+    editor.tip(plan.reason === "empty" ? t().rename.empty : t().rename.invalid, 5000);
+    return false;
+  }
+
+  const space = state.spaces.find((item) => item.id === spaceId);
+  const index = state.spaces.findIndex((item) => item.id === spaceId);
+  if (!space || index < 0) {
+    editor.tip(t().rename.failed, 5000);
+    return false;
+  }
+
+  const oldPath = node.path;
+  const newPath = renamedFilePath(oldPath, plan.name);
+  const wasCurrent = state.spaceId === spaceId && state.path === oldPath;
+  // 当前稿件可能正停在两秒自动保存窗口里。先落盘再动路径，否则计时器会拿旧句柄写一个同名旧文件回来。
+  if (wasCurrent && !(await save())) {
+    editor.tip(t().rename.saveFirst, 5000);
+    return false;
+  }
+  if (wasCurrent) await savePositionNow();
+
+  const from: LastFile = { kind: "space", index, path: oldPath };
+  const to: LastFile = { kind: "space", index, path: newPath };
+  // 只有改当前稿才需要挡住 watch 的旧路径事件；改别篇时不能冻结当前稿的自动保存。
+  const previousLoading = state.loading;
+  if (wasCurrent) state.loading = true;
+  try {
+    const result = await renameMarkdownFile(node.handle, plan.name);
+    if (!result.ok) {
+      if (result.reason === "failed") console.error("[Sheaf] 重命名失败", oldPath, result.error);
+      editor.tip(
+        result.reason === "duplicate" ? t().rename.duplicate(plan.name) : t().rename.failed,
+        5000,
+      );
+      return false;
+    }
+
+    // 磁盘已经成功，先把内存节点换掉。即使紧接着重扫失败，左栏也不会留下一个指向旧路径的入口。
+    node.name = plan.name;
+    node.path = newPath;
+    node.handle = result.handle;
+    if (wasCurrent) {
+      state.file = result.handle;
+      state.path = newPath;
+      state.name = plan.name;
+      state.stamp = await readStamp(result.handle);
+      state.missing = false;
+      await rememberLastFile(to);
+    }
+    await migrateRememberedPosition(from, to);
+    lastDeleted = null;
+
+    try {
+      await rescan(space);
+    } catch (error) {
+      console.warn("[Sheaf] 改名后重扫文件夹失败", error);
+      pushTree();
+    }
+    tree.focusRow(spaceId, newPath);
+    editor.tip(t().rename.done(plan.name), 3500);
+    return true;
+  } finally {
+    state.loading = previousLoading;
+    renderStatus();
+    refreshMeta();
+  }
 }
 
 // ---------- 删除文件 ----------

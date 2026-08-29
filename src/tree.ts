@@ -36,11 +36,12 @@ export class FileTree {
     private onPickDir: () => void,
     private onResume: () => void,
     private onDelete: (spaceId: string, node: FileNode) => void,
+    private onRename: (spaceId: string, node: FileNode, name: string) => Promise<boolean>,
   ) {
     onLangChange(() => this.render());
 
-    // 右键一篇稿子 → 删除。**只在桌面壳给**：浏览器演示站没有回收站可用，
-    // 那边只能永久删，一个「点了就没、找不回来」的入口比没有更糟。
+    // 右键一篇稿子 → 重命名 / 删除。**只在桌面壳给**：浏览器端没有原地改名，
+    // 也没有回收站；硬凑一套能力不完整的菜单比没有更糟。
     if (isDesktop) {
       this.container.addEventListener("contextmenu", (event) => {
         const row = (event.target as HTMLElement).closest<HTMLElement>("[data-path]");
@@ -52,21 +53,25 @@ export class FileTree {
         event.preventDefault();
         const spaceId = row.dataset.space ?? "";
         showContextMenu(event.clientX, event.clientY, [
+          { label: t().rename.menu, run: () => this.beginRename(row, spaceId, node) },
           { label: t().del.menu, danger: true, run: () => this.onDelete(spaceId, node) },
         ]);
       });
 
-      // Del 键删掉选中的那一篇，走的是跟右键菜单同一个回调、同一个确认框。
+      // F2 重命名、Del 删除，都只在焦点仍属于文件树时生效。
       // 监听挂在树容器上而不是 window：焦点在正文时这里根本收不到事件，
       // 所以正文里按 Del 照常删字符，两件事不会打架
       this.container.addEventListener("keydown", (event) => {
-        if (event.key !== "Delete") return;
+        if (event.target instanceof HTMLInputElement) return;
+        if (event.key !== "Delete" && event.key !== "F2") return;
         const row = (event.target as HTMLElement).closest<HTMLElement>("[data-path]");
         if (!row || row.dataset.kind !== "file") return;
         const node = this.find(row.dataset.space ?? "", row.dataset.path ?? "");
         if (!node) return;
         event.preventDefault();
-        this.onDelete(row.dataset.space ?? "", node);
+        const spaceId = row.dataset.space ?? "";
+        if (event.key === "F2") this.beginRename(row, spaceId, node);
+        else this.onDelete(spaceId, node);
       });
     }
 
@@ -74,6 +79,7 @@ export class FileTree {
     // 焦点既然不再被正文抢走，就得让它在左栏里能动、也能主动交出去，
     // 否则用户点完一篇会卡在一个不能打字也不能翻的地方
     this.container.addEventListener("keydown", (event) => {
+      if (event.target instanceof HTMLInputElement) return;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         const rows = [...this.container.querySelectorAll<HTMLElement>("[data-path]")];
         const at = rows.indexOf(
@@ -92,13 +98,14 @@ export class FileTree {
       if (!row || row.dataset.kind !== "file") return;
       const node = this.find(row.dataset.space ?? "", row.dataset.path ?? "");
       if (!node) return;
-      // button 收到回车会自己派发一次 click（那条路是「不进正文」），拦掉免得开两次
+      // 文件行自己接管回车：这一条明确把焦点送进正文。
       event.preventDefault();
       this.onOpen(row.dataset.space ?? "", node, true);
     });
 
     this.container.addEventListener("click", (event) => {
       const target = event.target as HTMLElement;
+      if (target instanceof HTMLInputElement) return;
 
       if (target.closest("[data-pick-dir]")) {
         this.onPickDir();
@@ -117,7 +124,7 @@ export class FileTree {
       }
 
       const row = target.closest<HTMLElement>("[data-path]");
-      if (!row) return;
+      if (!row || row.dataset.renaming === "1") return;
       const spaceId = row.dataset.space ?? "";
       const path = row.dataset.path ?? "";
       if (row.dataset.kind === "dir") {
@@ -175,6 +182,64 @@ export class FileTree {
   private find(spaceId: string, path: string): FileNode | null {
     const space = this.spaces.find((item) => item.id === spaceId);
     return space ? findIn(space.tree, path) : null;
+  }
+
+  /** 把文件行原地换成输入框；Enter 提交，Esc 或点到别处取消 */
+  private beginRename(row: HTMLElement, spaceId: string, node: FileNode): void {
+    const matched = node.name.match(/\.(md|markdown)$/i);
+    if (!matched) return;
+    const extension = matched[0];
+    const input = document.createElement("input");
+    input.className = "tree-rename-input";
+    input.type = "text";
+    input.value = node.name.slice(0, -extension.length);
+    input.setAttribute("aria-label", t().rename.menu);
+    input.spellcheck = false;
+
+    const suffix = document.createElement("span");
+    suffix.className = "tree-rename-suffix";
+    suffix.textContent = extension;
+
+    row.dataset.renaming = "1";
+    row.removeAttribute("title");
+    row.replaceChildren(input, suffix);
+
+    let committing = false;
+    const cancel = () => {
+      if (!committing) this.render();
+    };
+    const commit = async () => {
+      if (committing) return;
+      committing = true;
+      input.disabled = true;
+      const ok = await this.onRename(spaceId, node, input.value);
+      if (ok) {
+        // 成功路径通常已重扫过整棵树；同名 no-op 没重扫，在这里统一收掉输入框。
+        if (input.isConnected) this.render();
+        return;
+      }
+      committing = false;
+      if (!input.isConnected) return;
+      input.disabled = false;
+      input.focus({ preventScroll: true });
+      input.select();
+    };
+
+    input.addEventListener("mousedown", (event) => event.stopPropagation());
+    input.addEventListener("click", (event) => event.stopPropagation());
+    input.addEventListener("blur", cancel);
+    input.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancel();
+      } else if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        void commit();
+      }
+    });
+    input.focus({ preventScroll: true });
+    input.select();
   }
 
   private render(): void {
@@ -276,8 +341,13 @@ export class FileTree {
     list.className = "tree-list";
     for (const node of nodes) {
       const item = document.createElement("li");
-      const row = document.createElement("button");
-      row.type = "button";
+      // 文件行用 role=button 的 div：重命名时里面要放输入框，HTML 不允许 input 嵌在 button 里。
+      const row: HTMLElement = document.createElement(node.kind === "file" ? "div" : "button");
+      if (row instanceof HTMLButtonElement) row.type = "button";
+      else {
+        row.tabIndex = 0;
+        row.setAttribute("role", "button");
+      }
       row.className = "tree-row";
       row.dataset.space = spaceId;
       row.dataset.path = node.path;

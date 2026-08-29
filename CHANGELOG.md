@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+Single-file images and file-panel naming are now complete.
+
+- **Relative images load when a `.md` is opened by double-click or “Open Single File”.** Images in the same folder or a subfolder work with Chinese characters and spaces in their paths; saving keeps the original relative path instead of writing a `blob:` or absolute path.
+- **The file panel now supports inline rename.** Right-click and choose “Rename”, or press `F2`; `Enter` confirms and `Esc` cancels. The extension is preserved, while empty, invalid, and duplicate names are rejected in place. The editor, images, outline, autosave, reading position, and restart restore all follow the renamed draft.
+
 ## 0.1.8 — 2026-08-28
 
 You can delete drafts from the file panel now, and they go to the Recycle Bin.

@@ -80,6 +80,7 @@ export const zh: Dict = {
     howtoTable: "📊 光标停进表格，右上角自动冒出加行/加列按钮",
     howtoExport: "📤 顶栏「导出」可以存成 .md、网页，或直接打印成 PDF",
     howtoResume: "📖 每篇记得上次读到哪，切走再回来、关掉重开都落回原处",
+    howtoRename: "✏️ 右键左栏稿件选「重命名」，或选中后按 F2；回车确认，Esc 取消",
     howtoDelete: "🗑️ 右键左栏任意一篇（或选中后按 Del）可以删掉它，删之前会先问一句；删掉的进回收站，紧接着按 Ctrl+Z 能撤回",
     howtoZoomDiagram: "🔎 图片和流程图鼠标移上去，右上角冒出按钮，点开全屏看：滚轮缩放、按住拖动、Esc 关掉",
     howtoUpdate: "⬆️ 有新版会自己提示你，点一下就装好；也可以在下面手动查一次",
@@ -98,6 +99,15 @@ export const zh: Dict = {
     emptyHint: "还没打开文件夹。把文件夹直接拖进来，或者：",
     pickButton: "打开文件夹",
     removeTitle: "从列表移出（不会删磁盘上的文件）",
+  },
+  rename: {
+    menu: "重命名",
+    empty: "文件名不能为空",
+    invalid: "这个文件名不能用。不要含 < > : \" / \\ | ? *，也不要使用 Windows 保留名",
+    duplicate: (name) => `同一目录已经有「${name}」`,
+    failed: "重命名失败。文件可能已经不在了，或者正被别的程序占用",
+    saveFirst: "当前稿件还没保存成功，先处理完再重命名",
+    done: (name) => `已重命名为「${name}」`,
   },
   outline: {
     empty: "还没有标题",

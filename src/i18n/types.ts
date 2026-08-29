@@ -83,6 +83,7 @@ export interface Dict {
     howtoExport: string;
     /** 每篇记住上次读到哪 */
     howtoResume: string;
+    howtoRename: string;
     howtoDelete: string;
     howtoZoomDiagram: string;
     howtoUpdate: string;
@@ -101,6 +102,15 @@ export interface Dict {
     emptyHint: string;
     pickButton: string;
     removeTitle: string;
+  };
+  rename: {
+    menu: string;
+    empty: string;
+    invalid: string;
+    duplicate: (name: string) => string;
+    failed: string;
+    saveFirst: string;
+    done: (name: string) => string;
   };
   outline: {
     empty: string;
