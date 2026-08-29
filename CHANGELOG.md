@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.9 — 2026-08-29
 
 Single-file images and file-panel naming are now complete.
 
