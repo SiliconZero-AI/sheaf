@@ -53,6 +53,8 @@ require("./last-file.test.cjs");
 console.log("");
 require("./inside-space.test.cjs");
 console.log("");
+require("./loose-image-context.test.cjs");
+console.log("");
 require("./next-after-delete.test.cjs");
 console.log("");
 require("./anchor.test.cjs");

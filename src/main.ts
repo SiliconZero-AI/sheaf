@@ -52,6 +52,7 @@ import {
   saveAs,
   fileHandleFromPath,
   fileHandleIfExists,
+  containingDirOf,
   relativePathInside,
   loosePathOf,
   readStamp,
@@ -414,11 +415,23 @@ function refreshMeta(): void {
   const hasRelative = /\]\(\s*\.{0,2}\//.test(text);
   if (pending > 0) {
     dom.hintLabel.textContent = t().meta.pendingImages(pending);
-  } else if (!state.path && hasRelative) {
+  } else if (!currentImageReadContext().root && hasRelative) {
     dom.hintLabel.textContent = t().meta.relativeImages;
   } else {
     dom.hintLabel.textContent = "";
   }
+}
+
+/**
+ * 当前稿件从哪里读相对图片。
+ * 工作区里的篇按工作区根 + 相对路径；桌面散篇按所在目录 + 文件名。
+ * 后者只负责读已有图片，插入新图仍要求显式打开工作区。
+ */
+function currentImageReadContext(): { root: DirHandle | null; path: string } {
+  const space = currentSpace();
+  if (space && state.path) return { root: space.handle, path: state.path };
+  const root = state.file ? containingDirOf(state.file) : null;
+  return { root, path: root ? state.name : "" };
 }
 
 function markDirty(): void {
@@ -620,8 +633,8 @@ async function reloadFromDisk(): Promise<boolean> {
   try {
     const loaded = await readText(state.file);
     images.reset();
-    const space = state.spaces.find((item) => item.id === state.spaceId) ?? null;
-    const hydrated = await images.hydrate(loaded.text, space?.handle ?? null, state.path);
+    const imageContext = currentImageReadContext();
+    const hydrated = await images.hydrate(loaded.text, imageContext.root, imageContext.path);
     const stamp = await readStamp(state.file);
     // 复用 setDoc 而不是零散赋值：它顺带清掉 dirty/conflict 并复位只读态，少一处漏改
     setDoc(state.file, state.spaceId, state.path, state.name, loaded, stamp);
@@ -1619,9 +1632,11 @@ async function openLooseFile(handle: FileHandle, focus = false): Promise<void> {
     const loaded = await readTextFromFile(file);
     // 读成功之后才清旧映射，否则读失败时上一篇的图会全变裂图
     images.reset();
-    // spaceId / path 都留空：这篇不在任何工作区里，图片没有可靠的落脚点
+    // spaceId / path 仍留空：它不是工作区稿件；但桌面版可以拿文件所在目录读取已有相对图片
+    const imageRoot = containingDirOf(handle);
+    const hydrated = await images.hydrate(loaded.text, imageRoot, imageRoot ? file.name : "");
     setDoc(handle, "", "", file.name, loaded, stamp);
-    editor.setValue(loaded.text, true);
+    editor.setValue(hydrated, true);
     tree.setActive(null, null);
     // 记住这一篇，下次开 Sheaf 回到它。拿不到绝对路径（浏览器句柄）就不记——
     // 记了也开不回来，反而会把工作区里那篇正常的记忆顶掉

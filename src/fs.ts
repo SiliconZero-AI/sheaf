@@ -154,6 +154,30 @@ export function fileHandleFromPath(path: string): FileHandle {
   return new DiskFile(path, baseName(path));
 }
 
+/**
+ * 一篇散篇所在的目录。单独拆成纯函数是为了把 Windows 盘符、UNC 与正反斜杠测清楚；
+ * 算错的话，双击打开的稿子会去错误目录找相对图片。
+ */
+export function parentPathOf(path: string): string | null {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  const slash = normalized.lastIndexOf("/");
+  if (slash < 0) return null;
+  if (slash === 0) return "/";
+  const parent = normalized.slice(0, slash);
+  // `C:` 不是一个可直接读的绝对目录，盘符根必须保留斜杠。
+  return /^[a-z]:$/i.test(parent) ? `${parent}/` : parent;
+}
+
+/**
+ * 桌面版单开一篇时，用它的父目录作为只读图片上下文。
+ * 不把目录挂进左栏，也不改变「打开单篇」的产品含义；浏览器句柄拿不到绝对路径，返回 null。
+ */
+export function containingDirOf(handle: FileHandle): DirHandle | null {
+  if (!(handle instanceof DiskFile)) return null;
+  const path = parentPathOf(handle.path);
+  return path ? new DiskDir(path, baseName(path)) : null;
+}
+
 /** 选文件夹。返回 null = 用户自己取消了，不是错误 */
 export async function pickDirectory(): Promise<DirHandle | null> {
   if (isDesktop) {
