@@ -39,6 +39,30 @@ function fakeDir(written) {
   return dir;
 }
 
+/** 够 hydrate 用的只读假目录；顺便记录最终读取的相对路径 */
+function fakeReadRoot(files, requested) {
+  function dirAt(prefix = "") {
+    return {
+      name: prefix.split("/").pop() || "root",
+      async getDirectoryHandle(name) {
+        return dirAt(prefix ? `${prefix}/${name}` : name);
+      },
+      async getFileHandle(name) {
+        const path = prefix ? `${prefix}/${name}` : name;
+        requested.push(path);
+        if (!files.has(path)) throw new Error("NotFound");
+        return {
+          name,
+          async getFile() {
+            return files.get(path);
+          },
+        };
+      },
+    };
+  }
+  return dirAt();
+}
+
 globalThis.URL.createObjectURL = (() => {
   let n = 0;
   return () => `blob:http://localhost:5173/fake-${(n += 1)}`;
@@ -87,6 +111,31 @@ globalThis.URL.revokeObjectURL = () => {};
     check("图片二进制写进 images/", written.size, 1);
     check("落盘后不再计入待写", store.pendingCount(md), 0);
     check("稿件里写相对路径", store.dehydrate(md), "![封面](./images/封面.png)");
+  }
+
+  console.log("\n=== 单篇稿件：从所在目录读取相对图片 ===");
+  {
+    const requested = [];
+    const files = new Map([
+      ["assets/sheaf icon.png", new Blob(["icon"])],
+      ["图片/中文封面.png", new Blob(["cover"])],
+    ]);
+    const store = new ImageStore();
+    const raw = "![Sheaf 图标](assets/sheaf%20icon.png)\n\n![中文封面](图片/中文封面.png)";
+    const hydrated = await store.hydrate(raw, fakeReadRoot(files, requested), "单篇演示.md");
+    check("空格路径按 URL 编码解开后读取", requested[0], "assets/sheaf icon.png");
+    check("中文子目录能读取", requested[1], "图片/中文封面.png");
+    check("画布拿到两张 blob 图片", (hydrated.match(/blob:/g) || []).length, 2);
+    check("保存仍还原原始相对路径", store.dehydrate(hydrated), raw);
+    check("保存内容不含 blob", store.dehydrate(hydrated).includes("blob:"), false);
+  }
+
+  console.log("\n=== 单篇稿件：图片缺失时不碰原文 ===");
+  {
+    const store = new ImageStore();
+    const raw = "![暂时找不到](assets/missing.png)";
+    const hydrated = await store.hydrate(raw, fakeReadRoot(new Map(), []), "单篇演示.md");
+    check("缺图路径原样保留", hydrated, raw);
   }
 
   console.log("\n=== alt 清洗 ===");

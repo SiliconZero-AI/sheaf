@@ -52,6 +52,7 @@ import {
   saveAs,
   fileHandleFromPath,
   fileHandleIfExists,
+  containingDirOf,
   relativePathInside,
   loosePathOf,
   readStamp,
@@ -65,6 +66,10 @@ import {
   positionKey,
   recallPositions,
   rememberPosition,
+  migrateRememberedPosition,
+  planMarkdownRename,
+  renamedFilePath,
+  renameMarkdownFile,
   recallZoom,
   rememberZoom,
   type FilePosition,
@@ -306,6 +311,7 @@ const tree = new FileTree(
   () => void pickDirectory(),
   () => void resumePending(),
   (spaceId, node) => askDelete(spaceId, node),
+  (spaceId, node, name) => renameTreeFile(spaceId, node, name),
 );
 const outline = new Outline(dom.outline, jumpToHeading);
 const globalSearch = new GlobalSearch(
@@ -414,11 +420,23 @@ function refreshMeta(): void {
   const hasRelative = /\]\(\s*\.{0,2}\//.test(text);
   if (pending > 0) {
     dom.hintLabel.textContent = t().meta.pendingImages(pending);
-  } else if (!state.path && hasRelative) {
+  } else if (!currentImageReadContext().root && hasRelative) {
     dom.hintLabel.textContent = t().meta.relativeImages;
   } else {
     dom.hintLabel.textContent = "";
   }
+}
+
+/**
+ * 当前稿件从哪里读相对图片。
+ * 工作区里的篇按工作区根 + 相对路径；桌面散篇按所在目录 + 文件名。
+ * 后者只负责读已有图片，插入新图仍要求显式打开工作区。
+ */
+function currentImageReadContext(): { root: DirHandle | null; path: string } {
+  const space = currentSpace();
+  if (space && state.path) return { root: space.handle, path: state.path };
+  const root = state.file ? containingDirOf(state.file) : null;
+  return { root, path: root ? state.name : "" };
 }
 
 function markDirty(): void {
@@ -620,8 +638,8 @@ async function reloadFromDisk(): Promise<boolean> {
   try {
     const loaded = await readText(state.file);
     images.reset();
-    const space = state.spaces.find((item) => item.id === state.spaceId) ?? null;
-    const hydrated = await images.hydrate(loaded.text, space?.handle ?? null, state.path);
+    const imageContext = currentImageReadContext();
+    const hydrated = await images.hydrate(loaded.text, imageContext.root, imageContext.path);
     const stamp = await readStamp(state.file);
     // 复用 setDoc 而不是零散赋值：它顺带清掉 dirty/conflict 并复位只读态，少一处漏改
     setDoc(state.file, state.spaceId, state.path, state.name, loaded, stamp);
@@ -1267,6 +1285,84 @@ async function removeSpace(id: string): Promise<void> {
   editor.tip(t().tip.removedFromList(gone.tree.name), 4000);
 }
 
+// ---------- 文件重命名 ----------
+
+/**
+ * 工作区里的 Markdown 原地改名。正文 DOM、图片 blob 映射和大纲都不重建；
+ * 只换文件句柄与路径身份，这样选区、滚动位置和正在看的图片不会闪一下又重来。
+ */
+async function renameTreeFile(spaceId: string, node: FileNode, input: string): Promise<boolean> {
+  const plan = planMarkdownRename(node.name, input);
+  if (!plan.ok) {
+    if (plan.reason === "unchanged") return true;
+    editor.tip(plan.reason === "empty" ? t().rename.empty : t().rename.invalid, 5000);
+    return false;
+  }
+
+  const space = state.spaces.find((item) => item.id === spaceId);
+  const index = state.spaces.findIndex((item) => item.id === spaceId);
+  if (!space || index < 0) {
+    editor.tip(t().rename.failed, 5000);
+    return false;
+  }
+
+  const oldPath = node.path;
+  const newPath = renamedFilePath(oldPath, plan.name);
+  const wasCurrent = state.spaceId === spaceId && state.path === oldPath;
+  // 当前稿件可能正停在两秒自动保存窗口里。先落盘再动路径，否则计时器会拿旧句柄写一个同名旧文件回来。
+  if (wasCurrent && !(await save())) {
+    editor.tip(t().rename.saveFirst, 5000);
+    return false;
+  }
+  if (wasCurrent) await savePositionNow();
+
+  const from: LastFile = { kind: "space", index, path: oldPath };
+  const to: LastFile = { kind: "space", index, path: newPath };
+  // 只有改当前稿才需要挡住 watch 的旧路径事件；改别篇时不能冻结当前稿的自动保存。
+  const previousLoading = state.loading;
+  if (wasCurrent) state.loading = true;
+  try {
+    const result = await renameMarkdownFile(node.handle, plan.name);
+    if (!result.ok) {
+      if (result.reason === "failed") console.error("[Sheaf] 重命名失败", oldPath, result.error);
+      editor.tip(
+        result.reason === "duplicate" ? t().rename.duplicate(plan.name) : t().rename.failed,
+        5000,
+      );
+      return false;
+    }
+
+    // 磁盘已经成功，先把内存节点换掉。即使紧接着重扫失败，左栏也不会留下一个指向旧路径的入口。
+    node.name = plan.name;
+    node.path = newPath;
+    node.handle = result.handle;
+    if (wasCurrent) {
+      state.file = result.handle;
+      state.path = newPath;
+      state.name = plan.name;
+      state.stamp = await readStamp(result.handle);
+      state.missing = false;
+      await rememberLastFile(to);
+    }
+    await migrateRememberedPosition(from, to);
+    lastDeleted = null;
+
+    try {
+      await rescan(space);
+    } catch (error) {
+      console.warn("[Sheaf] 改名后重扫文件夹失败", error);
+      pushTree();
+    }
+    tree.focusRow(spaceId, newPath);
+    editor.tip(t().rename.done(plan.name), 3500);
+    return true;
+  } finally {
+    state.loading = previousLoading;
+    renderStatus();
+    refreshMeta();
+  }
+}
+
 // ---------- 删除文件 ----------
 //
 // 全应用唯一一处会动用户磁盘文件的地方。三条规矩钉死：
@@ -1619,9 +1715,11 @@ async function openLooseFile(handle: FileHandle, focus = false): Promise<void> {
     const loaded = await readTextFromFile(file);
     // 读成功之后才清旧映射，否则读失败时上一篇的图会全变裂图
     images.reset();
-    // spaceId / path 都留空：这篇不在任何工作区里，图片没有可靠的落脚点
+    // spaceId / path 仍留空：它不是工作区稿件；但桌面版可以拿文件所在目录读取已有相对图片
+    const imageRoot = containingDirOf(handle);
+    const hydrated = await images.hydrate(loaded.text, imageRoot, imageRoot ? file.name : "");
     setDoc(handle, "", "", file.name, loaded, stamp);
-    editor.setValue(loaded.text, true);
+    editor.setValue(hydrated, true);
     tree.setActive(null, null);
     // 记住这一篇，下次开 Sheaf 回到它。拿不到绝对路径（浏览器句柄）就不记——
     // 记了也开不回来，反而会把工作区里那篇正常的记忆顶掉

@@ -79,6 +79,7 @@ export const en: Dict = {
     howtoImages: "🖼️ Paste or drag in images — they're saved automatically into <code>images/</code> next to the draft",
     howtoTable: "📊 Put your cursor in a table and row/column buttons pop up in the top-right corner",
     howtoResume: "📖 Every draft remembers where you left off — switch away or restart, you land back in the same place",
+    howtoRename: "✏️ Right-click a draft and choose “Rename”, or select it and press F2; Enter confirms, Esc cancels",
     howtoDelete: "🗑️ Right-click any draft on the left (or select it and press Del) to delete it — it asks first, it goes to the Recycle Bin, and Ctrl+Z right after undoes it",
     howtoZoomDiagram:
       "🔎 Hover an image or a diagram and a button appears in its corner — open it full screen, scroll to zoom, drag to pan, Esc to close",
@@ -100,6 +101,15 @@ export const en: Dict = {
     emptyHint: "No folder open yet. Drag one in directly, or:",
     pickButton: "Open Folder",
     removeTitle: "Remove from this list (files on disk are untouched)",
+  },
+  rename: {
+    menu: "Rename",
+    empty: "The file name can't be empty",
+    invalid: "That file name can't be used. Avoid < > : \" / \\ | ? * and Windows reserved names",
+    duplicate: (name) => `“${name}” already exists in this folder`,
+    failed: "Couldn't rename it. The file may already be gone, or open in another program",
+    saveFirst: "This draft hasn't saved yet — finish that before renaming it",
+    done: (name) => `Renamed to “${name}”`,
   },
   outline: {
     empty: "No headings yet",

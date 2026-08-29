@@ -10,6 +10,7 @@ import {
   mkdir,
   exists,
   stat,
+  rename as renamePath,
 } from "@tauri-apps/plugin-fs";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
@@ -152,6 +153,93 @@ class DiskDir implements DirHandle {
 /** 操作系统把一个 .md 文件路径传进来时（双击、右键「打开方式」、命令行）用这个造句柄 */
 export function fileHandleFromPath(path: string): FileHandle {
   return new DiskFile(path, baseName(path));
+}
+
+/**
+ * 一篇散篇所在的目录。单独拆成纯函数是为了把 Windows 盘符、UNC 与正反斜杠测清楚；
+ * 算错的话，双击打开的稿子会去错误目录找相对图片。
+ */
+export function parentPathOf(path: string): string | null {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  const slash = normalized.lastIndexOf("/");
+  if (slash < 0) return null;
+  if (slash === 0) return "/";
+  const parent = normalized.slice(0, slash);
+  // `C:` 不是一个可直接读的绝对目录，盘符根必须保留斜杠。
+  return /^[a-z]:$/i.test(parent) ? `${parent}/` : parent;
+}
+
+/**
+ * 桌面版单开一篇时，用它的父目录作为只读图片上下文。
+ * 不把目录挂进左栏，也不改变「打开单篇」的产品含义；浏览器句柄拿不到绝对路径，返回 null。
+ */
+export function containingDirOf(handle: FileHandle): DirHandle | null {
+  if (!(handle instanceof DiskFile)) return null;
+  const path = parentPathOf(handle.path);
+  return path ? new DiskDir(path, baseName(path)) : null;
+}
+
+export type RenamePlan =
+  | { ok: true; name: string }
+  | { ok: false; reason: "empty" | "invalid" | "unchanged" };
+
+/**
+ * 内联输入框只改主文件名，扩展名永远沿用原文件。
+ * 这里按 Windows 的文件名规矩一次判完，避免输入框放行、落到磁盘才给生硬错误。
+ */
+export function planMarkdownRename(currentName: string, input: string): RenamePlan {
+  const matched = currentName.match(/\.(md|markdown)$/i);
+  if (!matched) return { ok: false, reason: "invalid" };
+  const extension = matched[0];
+  let stem = input.trim();
+  // 用户顺手把扩展名也敲进来时不制造 `稿件.md.md`，仍然保留原来的大小写与种类。
+  stem = stem.replace(/\.(md|markdown)$/i, "").trim();
+  if (!stem) return { ok: false, reason: "empty" };
+  if (
+    stem === "." ||
+    stem === ".." ||
+    /[<>:"/\\|?*\u0000-\u001f]/.test(stem) ||
+    /[. ]$/.test(stem) ||
+    /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(stem) ||
+    `${stem}${extension}`.length > 255
+  ) {
+    return { ok: false, reason: "invalid" };
+  }
+  const name = `${stem}${extension}`;
+  return name.toLocaleLowerCase() === currentName.toLocaleLowerCase()
+    ? { ok: false, reason: "unchanged" }
+    : { ok: true, name };
+}
+
+/** 同目录改名后的工作区相对路径；只换最后一段，不移动文件 */
+export function renamedFilePath(path: string, name: string): string {
+  const slash = path.lastIndexOf("/");
+  return slash < 0 ? name : `${path.slice(0, slash + 1)}${name}`;
+}
+
+export type RenameDiskResult =
+  | { ok: true; handle: FileHandle }
+  | { ok: false; reason: "unsupported" | "duplicate" | "failed"; error?: unknown };
+
+/**
+ * 桌面端原地改名。Tauri 的 rename 在部分平台会替换目标，所以必须先查同名，
+ * 绝不能拿“重命名”当成静默覆盖另一篇稿子的入口。
+ */
+export async function renameMarkdownFile(
+  handle: FileHandle,
+  name: string,
+): Promise<RenameDiskResult> {
+  if (!(handle instanceof DiskFile)) return { ok: false, reason: "unsupported" };
+  const parent = parentPathOf(handle.path);
+  if (!parent) return { ok: false, reason: "failed" };
+  const target = childPath(parent, name);
+  try {
+    if (await exists(target)) return { ok: false, reason: "duplicate" };
+    await renamePath(handle.path, target);
+    return { ok: true, handle: new DiskFile(target, name) };
+  } catch (error) {
+    return { ok: false, reason: "failed", error };
+  }
 }
 
 /** 选文件夹。返回 null = 用户自己取消了，不是错误 */
@@ -373,6 +461,34 @@ export async function rememberPosition(key: string, position: FilePosition): Pro
     await stateSet(POSITIONS_KEY, trimPositions(all));
   } catch (error) {
     console.warn("[Sheaf] 记不住阅读位置", error);
+  }
+}
+
+/**
+ * 文件改名后，把阅读位置从旧身份搬到新身份；内容锚点本身一个字不动。
+ * 目标键即使留过旧记录也由当前文件这份覆盖——磁盘层已保证目标文件不存在，旧记录只是历史残影。
+ */
+export function migratePositionMap(
+  map: PositionMap,
+  from: LastFile,
+  to: LastFile,
+): PositionMap {
+  const oldKey = positionKey(from);
+  const newKey = positionKey(to);
+  if (oldKey === newKey || !Object.prototype.hasOwnProperty.call(map, oldKey)) return map;
+  const next = { ...map, [newKey]: map[oldKey] };
+  delete next[oldKey];
+  return next;
+}
+
+/** 改名成功后持久化阅读位置迁移；记忆写不进去不能反过来把磁盘改名判成失败 */
+export async function migrateRememberedPosition(from: LastFile, to: LastFile): Promise<void> {
+  try {
+    const all = await recallPositions();
+    const next = migratePositionMap(all, from, to);
+    if (next !== all) await stateSet(POSITIONS_KEY, trimPositions(next));
+  } catch (error) {
+    console.warn("[Sheaf] 改名后迁移不了阅读位置", error);
   }
 }
 

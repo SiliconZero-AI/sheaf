@@ -21,6 +21,8 @@ Tested from start to finish with real writing. Packaged as a Windows installer (
 - 📖 **Every draft remembers where you left off**: switch drafts, or close and reopen Sheaf, and you land back at the same place and cursor position. Your spot is tracked by the nearest heading, so text added above where you are reading does not push you off it
 - 🔎 **Zoom the text**: `Ctrl` + `+` / `-` to resize everything, `Ctrl+0` to reset, `Ctrl` + scroll wheel works too — for dense drafts or a screen that sits far away, and the size you pick is remembered
 - 🖼️ **Open images and diagrams full screen**: hover one and a button appears in its corner; click it to fill the window, then scroll to zoom, drag to pan, `Esc` to go back. This is what wide flowcharts need — the ones squeezed into the writing column until every label runs together
+- 📎 **Relative images work in single-file mode**: double-click a `.md` in File Explorer or use “Open Single File”, and its relative images load from the draft's own folder; saving keeps the original relative paths
+- ✏️ **Rename from the file panel**: right-click a draft and choose “Rename”, or select it and press `F2`; the inline field changes only the base name and preserves `.md` / `.markdown`
 - 🗑️ **Delete drafts from the file panel**: right-click any draft and pick "Delete" (or select it and press Del). It asks first, what you delete goes to the Recycle Bin, and **Ctrl+Z right after undoes it** — no trip to File Explorer to clear out a scratch file
 - 🌗 **Light/dark themes**: follows the system by default, lock it from the top bar
 - 🌐 **Bilingual interface**: switch between Chinese and English instantly, no reload
@@ -68,7 +70,7 @@ Then click the install icon in Chrome/Edge's address bar. Windows users are bett
 Run tests:
 
 ```bash
-npm test           # regression tests for image handling, guarding two real data-loss bugs from the past
+npm test           # regression tests for critical file, image, sync, and update paths
 ```
 
 ## ⚠️ Known limitations
