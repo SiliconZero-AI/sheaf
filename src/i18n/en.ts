@@ -111,6 +111,12 @@ export const en: Dict = {
     saveFirst: "This draft hasn't saved yet — finish that before renaming it",
     done: (name) => `Renamed to “${name}”`,
   },
+  win: {
+    openInNew: "Open in New Window",
+    newWindow: "New Window",
+    already: "This file is already open in another window",
+    failed: "Couldn't open a new window",
+  },
   outline: {
     empty: "No headings yet",
     untitled: "(Untitled)",

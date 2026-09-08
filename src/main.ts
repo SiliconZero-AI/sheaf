@@ -85,6 +85,14 @@ import {
   captureScrollAnchor,
 } from "./anchor";
 import { DirWatcher, parentDir, type WatchTarget } from "./watch";
+import {
+  currentLabel,
+  isMainWindow,
+  openBlankWindow,
+  openPathInNewWindow,
+  parseOpenTarget,
+  windowShowing,
+} from "./window";
 
 function need<T extends HTMLElement>(selector: string): T {
   const el = document.querySelector<T>(selector);
@@ -312,6 +320,7 @@ const tree = new FileTree(
   () => void resumePending(),
   (spaceId, node) => askDelete(spaceId, node),
   (spaceId, node, name) => renameTreeFile(spaceId, node, name),
+  (_spaceId, node) => void openNodeInNewWindow(node),
 );
 const outline = new Outline(dom.outline, jumpToHeading);
 const globalSearch = new GlobalSearch(
@@ -1913,34 +1922,106 @@ async function setupZoom(): Promise<void> {
   arm();
 }
 
+/**
+ * 把左栏里的某一篇推到一个新窗口去。
+ *
+ * 开之前先把这边的改动落盘：新窗口读的是**磁盘上**那份，
+ * 没保存的话它拿到的是旧内容——两个窗口标题一样、正文却不一样，
+ * 而用户接着在新窗口里改一改、一存，就把这边还没保存的字盖掉了。
+ */
+async function openNodeInNewWindow(node: FileNode): Promise<void> {
+  const path = loosePathOf(node.handle);
+  // 浏览器端没有窗口这回事，右键菜单本来也只在桌面壳给（见 tree.ts）
+  if (!path) return;
+  try {
+    if (state.dirty && state.file && loosePathOf(state.file) === path) await save();
+    const opened = await openPathInNewWindow(path, node.name);
+    // 没新开成，说明它本来就开着、刚被提到前面来了。说一声，
+    // 否则用户会以为「点了没反应」——那个窗口可能在另一块屏幕上
+    if (!opened) editor.tip(t().win.already, 3000);
+  } catch (error) {
+    console.error("[Sheaf] 开不了新窗口", error);
+    editor.tip(t().win.failed, 5000);
+  }
+}
+
+/** 开一个空白的新窗口：文件夹照常恢复，但不自动打开任何一篇 */
+async function openNewBlankWindow(): Promise<void> {
+  try {
+    await openBlankWindow(t().win.newWindow);
+  } catch (error) {
+    console.error("[Sheaf] 开不了新窗口", error);
+    editor.tip(t().win.failed, 5000);
+  }
+}
+
 async function boot(): Promise<void> {
   // 排在最前面：先把比例摆正再渲染，不然开机时正文会先小后大跳一下
   if (isDesktop) await setupZoom();
+
+  // 这个窗口是谁、要它开哪篇。主窗口的地址后面没有参数；
+  // 副窗口是 openPathInNewWindow / openBlankWindow 拼 URL 带进来的。
+  // 判完之后 boot 就分成两条路：主窗口那条一个字没变，副窗口那条只做被指派的事
+  const target = isDesktop
+    ? parseOpenTarget(window.location.search)
+    : { path: null, blank: false };
+  const secondary = target.path !== null || target.blank;
   editor.setValue(t().welcome, true);
   refreshMeta();
   // 先渲染一次：没有工作区时左栏要显示引导，而不是一片空白
   pushTree();
   const handles = await recallRoots();
   if (handles.length > 0) {
-    // 启动时不能弹授权框（不是用户手势），拿不到权限就把「继续上次」露出来等他点
-    await restoreSpaces(handles, false);
+    // 启动时不能弹授权框（不是用户手势），拿不到权限就把「继续上次」露出来等他点。
+    // 副窗口不许自动开「上次那篇」——那篇多半正在主窗口里开着（见 restoreSpaces 的 autoOpen）
+    await restoreSpaces(handles, false, !secondary);
   }
   // 双击 .md 冷启动进来的那一篇优先于「上次那篇」：它是用户此刻的明确意图。
-  // 排在恢复之前领走，否则会先渲染一篇没人要的稿子再被顶掉，画面闪一下
+  // 排在恢复之前领走，否则会先渲染一篇没人要的稿子再被顶掉，画面闪一下。
+  // 每个窗口都要挂上这个监听：主窗口可能已经被用户关掉，
+  // 那时接待「双击 .md」的是还活着的某个副窗口（挑谁由 Rust 那边定）
   const openedByOs = isDesktop ? await setupOsFileOpen() : false;
-  const last = await recallLastFile();
-  // 散篇不挂在任何工作区上，restoreSpaces 恢复不到它，得单独开一次
-  if (!openedByOs && last?.kind === "loose") {
-    const handle = await fileHandleIfExists(last.path);
-    // 文件已经被删了 / 挪走了 / 在拔掉的移动硬盘上，就当没记过。
-    // 启动时甩一句「打开失败」，用户既修不了也不想看
-    if (handle) await openLooseFile(handle);
+
+  if (target.path) {
+    // 副窗口指名了要开哪篇，就只开那篇：不碰「上次那篇」，也不碰冷启动参数
+    await openRequested(target.path);
+  } else if (!secondary) {
+    const last = await recallLastFile();
+    // 散篇不挂在任何工作区上，restoreSpaces 恢复不到它，得单独开一次
+    if (!openedByOs && last?.kind === "loose") {
+      const handle = await fileHandleIfExists(last.path);
+      // 文件已经被删了 / 挪走了 / 在拔掉的移动硬盘上，就当没记过。
+      // 启动时甩一句「打开失败」，用户既修不了也不想看
+      if (handle) await openLooseFile(handle);
+    }
   }
   if (isDesktop) await setupNativeFocus();
   // 查更新排在最后，还要再等几秒：启动这几百毫秒里要恢复工作区、扫目录树、
   // 读回上次那篇并复位光标，一个网络请求挤进来只会让开机更慢。
-  // 用户也不需要开机第一眼就看见更新框——他打开 Sheaf 是来写字的
-  if (isDesktop) window.setTimeout(() => void checkUpdateOnStart(), 3000);
+  // 用户也不需要开机第一眼就看见更新框——他打开 Sheaf 是来写字的。
+  //
+  // **只让主窗口查**：每个窗口各查一次的话，开着两个窗口就弹两个一模一样的更新框，
+  // 而且两边都能点「现在更新」——更新器会杀掉整个进程，等于另一个窗口没保存的字全丢
+  if (isDesktop && isMainWindow()) {
+    window.setTimeout(() => void checkUpdateOnStart(), 3000);
+  }
+}
+
+/**
+ * 副窗口开自己那一篇。
+ *
+ * 先按「工作区里的一篇」找，找不到才当散篇——**顺序不能反**：
+ * 工作区里的稿子被当成散篇打开时，正文里的相对路径图片会全变裂图。
+ * 那是 0.1.2 修过的老 bug（双击 .md 那条路），这里是同一个坑，别再踩一次。
+ */
+async function openRequested(path: string): Promise<void> {
+  const located = locateInSpaces(path);
+  if (located) {
+    await openFile(located.spaceId, located.node, true);
+    return;
+  }
+  const handle = await fileHandleIfExists(path);
+  if (handle) await openLooseFile(handle, true);
 }
 
 /**
@@ -1992,6 +2073,20 @@ async function setupNativeFocus(): Promise<void> {
  */
 async function setupOsFileOpen(): Promise<boolean> {
   const openPath = async (path: string) => {
+    // 这篇已经开在**别的**窗口了 → 把那个窗口叫到前面来，自己不动。
+    // 不这么做的话，用户从资源管理器双击一篇正开着的稿子，会得到第二份同一个文件，
+    // 两个窗口各存各的，后存的静默盖掉先存的。
+    //
+    // 「哪个窗口开着哪篇」只在 JS 这一处算（window.ts 的 labelForPath）。
+    // Rust 那边不重算一遍：同一套哈希写两份，迟早会因为路径归一化的细节而不一致，
+    // 而不一致的表现正好是这里想避免的那件事
+    const existing = await windowShowing(path);
+    if (existing && existing.label !== currentLabel()) {
+      await existing.unminimize().catch(() => {});
+      await existing.show().catch(() => {});
+      await existing.setFocus().catch(() => {});
+      return;
+    }
     // 从外面双击进来的人，下一步就是想写字。
     // Rust 那边的 bring_to_front 只负责把窗口提到前台——窗口有焦点不等于正文有光标，
     // 所以这里要主动把光标放进去（focus=true）。
@@ -2001,6 +2096,9 @@ async function setupOsFileOpen(): Promise<boolean> {
 
   await listen<string>("open-file", (event) => void openPath(event.payload));
 
+  // 冷启动参数只有主窗口去领。副窗口是主窗口开出来的，它 boot 的时候主窗口早领完了，
+  // 这里再问一次也只会拿到 null——明写出来是让「谁负责冷启动那一篇」在代码里看得见
+  if (!isMainWindow()) return false;
   const pending = await invoke<string | null>("take_pending_file");
   if (!pending) return false;
   // 这一次要等它开完：boot 得据此决定还要不要恢复「上次那篇」
@@ -2015,6 +2113,12 @@ async function setupOsFileOpen(): Promise<boolean> {
 async function restoreSpaces(
   handles: DirHandle[],
   request: boolean,
+  /**
+   * 恢复完文件夹之后，要不要顺手把「上次那篇」打开。
+   * 副窗口一律传 false：那篇多半正在主窗口里开着，两个窗口编辑同一个文件，
+   * 后存的会一声不响地盖掉先存的，而用户看不出发生了什么。
+   */
+  autoOpen = true,
 ): Promise<void> {
   const last = await recallLastFile();
   const bySource = new Map<number, Workspace>();
@@ -2053,6 +2157,7 @@ async function restoreSpaces(
   // 二来 doOpenFile 会顺手把「上次那篇」的记忆改写成工作区那篇，散篇就再也回不来了
   if (last?.kind === "loose") return;
 
+  if (!autoOpen) return;
   const target = (last && bySource.get(last.index)) || state.spaces[0];
   if (!target || state.dirty) return;
   const node = (last && findFile(target.tree, last.path)) || firstFile(target.tree);
@@ -2330,6 +2435,11 @@ window.addEventListener("keydown", (event) => {
   } else if (event.shiftKey && key === "k") {
     event.preventDefault();
     dom.imageInput.click();
+  } else if (event.shiftKey && key === "n" && isDesktop) {
+    // 开一个空白的新窗口。浏览器端不给：那边 Ctrl+Shift+N 是浏览器自己的无痕窗口，
+    // 抢过来既抢不赢也不该抢
+    event.preventDefault();
+    void openNewBlankWindow();
   } else if (key === "z" && !event.shiftKey && lastDeleted) {
     // 刚删完文件的那一下，Ctrl+Z 撤销的是删除。
     // lastDeleted 为空时**什么都不做也不拦**，原样放给 Vditor 去撤销打字——

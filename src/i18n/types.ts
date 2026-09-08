@@ -112,6 +112,17 @@ export interface Dict {
     saveFirst: string;
     done: (name: string) => string;
   };
+  /** 多窗口：同时开好几个 Sheaf 窗口，两篇并排改 */
+  win: {
+    /** 左栏右键菜单里那一项 */
+    openInNew: string;
+    /** 顶栏按钮 / 快捷键提示：开一个空白的新窗口 */
+    newWindow: string;
+    /** 点的那篇已经在别的窗口开着，这次只是把那个窗口叫到前面来 */
+    already: string;
+    /** 窗口开不出来（极少见：系统资源不足、label 非法） */
+    failed: string;
+  };
   outline: {
     empty: string;
     untitled: string;

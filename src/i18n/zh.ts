@@ -109,6 +109,12 @@ export const zh: Dict = {
     saveFirst: "当前稿件还没保存成功，先处理完再重命名",
     done: (name) => `已重命名为「${name}」`,
   },
+  win: {
+    openInNew: "在新窗口打开",
+    newWindow: "新窗口",
+    already: "这篇已经开在另一个窗口了",
+    failed: "开不了新窗口",
+  },
   outline: {
     empty: "还没有标题",
     untitled: "（无标题）",

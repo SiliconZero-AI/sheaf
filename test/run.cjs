@@ -14,6 +14,7 @@ const args = [
   "src/fs.ts",
   "src/env.ts",
   "src/store.ts",
+  "src/window.ts",
   "src/anchor.ts",
   "src/ir-repair.ts",
   "src/lightbox-view.ts",
@@ -48,6 +49,10 @@ fs.writeFileSync(path.join(outDir, "package.json"), '{ "type": "commonjs" }\n');
 require("./stamp.test.cjs");
 console.log("");
 require("./store.test.cjs");
+console.log("");
+require("./merge-state.test.cjs");
+console.log("");
+require("./window.test.cjs");
 console.log("");
 require("./last-file.test.cjs");
 console.log("");

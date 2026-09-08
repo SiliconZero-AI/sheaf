@@ -37,6 +37,7 @@ export class FileTree {
     private onResume: () => void,
     private onDelete: (spaceId: string, node: FileNode) => void,
     private onRename: (spaceId: string, node: FileNode, name: string) => Promise<boolean>,
+    private onOpenInNewWindow: (spaceId: string, node: FileNode) => void,
   ) {
     onLangChange(() => this.render());
 
@@ -53,6 +54,9 @@ export class FileTree {
         event.preventDefault();
         const spaceId = row.dataset.space ?? "";
         showContextMenu(event.clientX, event.clientY, [
+          // 摆在最上面：这是三项里唯一「不改任何东西」的动作，
+          // 而删除在最下面且画成红的，中间隔着重命名——手滑点错的代价最小
+          { label: t().win.openInNew, run: () => this.onOpenInNewWindow(spaceId, node) },
           { label: t().rename.menu, run: () => this.beginRename(row, spaceId, node) },
           { label: t().del.menu, danger: true, run: () => this.onDelete(spaceId, node) },
         ]);
