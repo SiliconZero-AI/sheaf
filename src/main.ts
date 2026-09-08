@@ -24,7 +24,7 @@ import { applyStaticI18n, currentLang, onLangChange, t } from "./i18n";
 import { setupLang } from "./lang";
 import type Vditor from "vditor";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
@@ -320,7 +320,7 @@ const tree = new FileTree(
   () => void resumePending(),
   (spaceId, node) => askDelete(spaceId, node),
   (spaceId, node, name) => renameTreeFile(spaceId, node, name),
-  (_spaceId, node) => void openNodeInNewWindow(node),
+  (spaceId, node) => void openNodeInNewWindow(spaceId, node),
 );
 const outline = new Outline(dom.outline, jumpToHeading);
 const globalSearch = new GlobalSearch(
@@ -1929,20 +1929,61 @@ async function setupZoom(): Promise<void> {
  * 没保存的话它拿到的是旧内容——两个窗口标题一样、正文却不一样，
  * 而用户接着在新窗口里改一改、一存，就把这边还没保存的字盖掉了。
  */
-async function openNodeInNewWindow(node: FileNode): Promise<void> {
+async function openNodeInNewWindow(spaceId: string, node: FileNode): Promise<void> {
   const path = loosePathOf(node.handle);
   // 浏览器端没有窗口这回事，右键菜单本来也只在桌面壳给（见 tree.ts）
   if (!path) return;
+  // 推出去的是不是本窗口此刻正开着的那篇。是的话，开完之后本窗口得让开
+  const isCurrent = !!state.file && loosePathOf(state.file) === path;
   try {
-    if (state.dirty && state.file && loosePathOf(state.file) === path) await save();
+    if (state.dirty && isCurrent) await save();
     const opened = await openPathInNewWindow(path, node.name);
-    // 没新开成，说明它本来就开着、刚被提到前面来了。说一声，
-    // 否则用户会以为「点了没反应」——那个窗口可能在另一块屏幕上
-    if (!opened) editor.tip(t().win.already, 3000);
+    if (!opened) {
+      // 没新开成，说明它本来就开着、刚被提到前面来了。说一声，
+      // 否则用户会以为「点了没反应」——那个窗口可能在另一块屏幕上
+      editor.tip(t().win.already, 3000);
+      return;
+    }
+    if (isCurrent) {
+      await leaveCurrentFile(spaceId, node);
+      editor.tip(t().win.movedOut(node.name), 3500);
+    }
   } catch (error) {
     console.error("[Sheaf] 开不了新窗口", error);
     editor.tip(t().win.failed, 5000);
   }
+}
+
+/**
+ * 从某一篇上「让开」——它刚被推到新窗口去了，本窗口腾位置切到下一篇。
+ *
+ * **不碰磁盘**：文件好好的，只是换一个窗口显示它。这跟删除是两回事，
+ * 只是「当前这篇没了之后该显示谁」的处理一模一样，所以复用 nextAfterDelete。
+ *
+ * 不让开的话，两个窗口开着同一个文件，各存各的。虽然冲突检测能兜住（会弹框），
+ * 但那是把一次本可以避免的冲突硬塞给用户；而他的意图本来就是
+ * 「把这篇挪到新窗口去」，本窗口腾出来才对得上。
+ */
+async function leaveCurrentFile(spaceId: string, node: FileNode): Promise<void> {
+  const space = state.spaces.find((item) => item.id === spaceId);
+  const successor = space ? nextAfterDelete(space.tree, node.path) : null;
+  // 这两行必须在 openFile 之前，理由跟 doDelete 那条路一模一样：
+  // doOpenFile 开头有一道「切走前先保存上一篇」，不先断开关联的话，
+  // 它会拿这个句柄再写一次盘，把新窗口刚读进去的内容和这边的旧状态搅在一起
+  state.file = null;
+  state.dirty = false;
+  if (successor) {
+    await openFile(spaceId, successor);
+    return;
+  }
+  // 这个工作区就这一篇，推走之后没有下一篇了：清空画布，
+  // 不留一篇指向「已经归别的窗口管」的半截状态
+  images.reset();
+  setDoc(null, "", "", "");
+  editor.setValue("", true);
+  tree.setActive(null, null);
+  refreshMeta();
+  refreshWatchers();
 }
 
 /** 开一个空白的新窗口：文件夹照常恢复，但不自动打开任何一篇 */
@@ -2094,7 +2135,12 @@ async function setupOsFileOpen(): Promise<boolean> {
     await openLooseFile(fileHandleFromPath(path), true);
   };
 
-  await listen<string>("open-file", (event) => void openPath(event.payload));
+  // **必须挂在当前窗口上，不能用 @tauri-apps/api/event 那个全局 listen。**
+  // 那个全局的等同于 Rust 的 listen_any：不管事件发给谁它都收
+  // （tauri-apps/tauri#11379、#10182 都是这件事）。于是 Rust 那边辛苦挑出来的
+  // 「接待窗口」形同虚设——双击一篇 .md，所有开着的窗口会各开一份同一个文件。
+  // 这条是真机验收当场抓到的，本地测试和类型检查都盖不住。
+  await getCurrentWebviewWindow().listen<string>("open-file", (event) => void openPath(event.payload));
 
   // 冷启动参数只有主窗口去领。副窗口是主窗口开出来的，它 boot 的时候主窗口早领完了，
   // 这里再问一次也只会拿到 null——明写出来是让「谁负责冷启动那一篇」在代码里看得见

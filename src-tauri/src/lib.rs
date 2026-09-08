@@ -167,7 +167,17 @@ pub fn run() {
                 .or_else(|| app.webview_windows().into_values().next());
             let Some(window) = host else { return };
             if let Some(path) = extract_md_path(&argv) {
-                let _ = app.emit_to(window.label(), "open-file", path);
+                // 写全 EventTarget::WebviewWindow 而不是传一个 &str：后者会转成
+                // EventTarget::AnyLabel，而 AnyLabel 的匹配语义有已知毛病
+                // （tauri-apps/tauri#11561）。这里跟前端 getCurrentWebviewWindow().listen()
+                // 注册的 target 精确对上，不留解释空间
+                let _ = app.emit_to(
+                    tauri::EventTarget::WebviewWindow {
+                        label: window.label().to_string(),
+                    },
+                    "open-file",
+                    path,
+                );
             }
             bring_to_front(&window);
         }))

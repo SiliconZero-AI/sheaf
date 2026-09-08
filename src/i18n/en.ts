@@ -116,6 +116,7 @@ export const en: Dict = {
     newWindow: "New Window",
     already: "This file is already open in another window",
     failed: "Couldn't open a new window",
+    movedOut: (name) => `“${name}” moved to a new window`,
   },
   outline: {
     empty: "No headings yet",

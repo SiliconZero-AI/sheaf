@@ -114,6 +114,7 @@ export const zh: Dict = {
     newWindow: "新窗口",
     already: "这篇已经开在另一个窗口了",
     failed: "开不了新窗口",
+    movedOut: (name) => `「${name}」已挪到新窗口`,
   },
   outline: {
     empty: "还没有标题",

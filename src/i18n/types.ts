@@ -122,6 +122,8 @@ export interface Dict {
     already: string;
     /** 窗口开不出来（极少见：系统资源不足、label 非法） */
     failed: string;
+    /** 推出去的正是本窗口开着的那篇，本窗口已经让开、切到了下一篇 */
+    movedOut: (name: string) => string;
   };
   outline: {
     empty: string;
