@@ -26,6 +26,7 @@ tauri-plugin-log = "2"
 tauri-plugin-fs = { version = "2.5.1", features = ["watch"] }
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-clipboard-manager = "2.3.3"
 
 # 只为了一个函数：AllowSetForegroundWindow（见 lib.rs 的 allow_foreground_handoff）。
 # 不是新引入的包——tauri / tao / 各插件已经在编译 windows-sys 0.61，这里只是显式声明用它。

@@ -9,6 +9,13 @@ export interface MenuItem {
   label: string;
   /** 危险动作（删除）画成红的，跟中性项区分开 */
   danger?: boolean;
+  /**
+   * 灰掉但仍然显示。用在「没选中字所以剪不了」这种场合——
+   * 直接把项藏起来会让菜单每次高矮不一，用户点之前得先找一遍位置。
+   */
+  disabled?: boolean;
+  /** 右侧那行浅色快捷键（Ctrl+C 之类）。纯提示，不参与触发 */
+  hint?: string;
   run: () => void;
 }
 
@@ -40,8 +47,25 @@ export function showContextMenu(x: number, y: number, items: MenuItem[]): void {
     button.className = "ctx-item";
     button.setAttribute("role", "menuitem");
     if (item.danger) button.dataset.danger = "1";
+    if (item.disabled) {
+      button.disabled = true;
+      button.dataset.disabled = "1";
+    }
     button.textContent = item.label;
+    if (item.hint) {
+      const hint = document.createElement("span");
+      hint.className = "ctx-hint";
+      hint.textContent = item.hint;
+      button.append(hint);
+    }
+    // 按下去的那一刻不许焦点跑过来。正文右键菜单的剪切 / 复制作用于
+    // 「当前聚焦的可编辑元素」，焦点一旦落到这个按钮上，正文就不再是当前元素，
+    // execCommand 会静静地什么都不做。table-toolbar.ts 里为了保住选区也是这么拦的。
+    button.addEventListener("mousedown", (event) => event.preventDefault());
     button.addEventListener("click", () => {
+      // 灰掉的项点了就该什么都不发生，连菜单都不收——
+      // 收掉的话用户会以为自己点中了，然后疑惑「怎么没反应」
+      if (item.disabled) return;
       close();
       item.run();
     });

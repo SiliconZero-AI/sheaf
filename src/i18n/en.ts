@@ -118,6 +118,13 @@ export const en: Dict = {
     failed: "Couldn't open a new window",
     movedOut: (name) => `“${name}” moved to a new window`,
   },
+  edit: {
+    cut: "Cut",
+    copy: "Copy",
+    paste: "Paste",
+    selectAll: "Select All",
+    pasteFailed: "No text on the clipboard to paste",
+  },
   outline: {
     empty: "No headings yet",
     untitled: "(Untitled)",

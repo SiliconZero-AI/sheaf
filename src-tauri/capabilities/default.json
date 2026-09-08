@@ -27,6 +27,8 @@
     "core:window:allow-outer-position",
     "core:window:allow-inner-size",
     "core:window:allow-scale-factor",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
     {
       "identifier": "fs:scope",
       "allow": [{ "path": "**" }]

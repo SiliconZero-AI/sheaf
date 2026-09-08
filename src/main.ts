@@ -85,6 +85,7 @@ import {
   captureScrollAnchor,
 } from "./anchor";
 import { DirWatcher, parentDir, type WatchTarget } from "./watch";
+import { showEditMenu } from "./edit-menu";
 import {
   currentLabel,
   isMainWindow,
@@ -2495,32 +2496,69 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
+/** 正文右键菜单要用到的两件事：往光标处插字、出事了说一句 */
+const editMenuHost = {
+  insert: (text: string) => {
+    // insertValue 是「在光标处插入」不是「替换选区」——不先清掉选中的字，
+    // 粘贴结果前面会多留一份原文。editor.ts 的 wrapSelection 踩过同一个坑
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) sel.getRangeAt(0)?.deleteContents();
+    editor.insertValue(text);
+    // insertValue 不会触发 Vditor 的 onInput，脏标记、字数、自动保存都得自己跟一遍。
+    // 跟表情面板那条路一模一样（见上面 EmojiPicker 的回调）——漏掉的话
+    // 粘贴进去的字不算「改过」，自动保存不会把它写盘
+    markDirty();
+    refreshMeta();
+    scheduleSave();
+  },
+  deleteSelection: () => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) return;
+    sel.getRangeAt(0)?.deleteContents();
+    // 直接动 DOM 之后 Vditor 并不知道内容变了。用公开的 insertValue("") 逼它把
+    // 当前块重解析一遍——跟 ir-repair.ts 修裸语法用的是同一个手法，
+    // 不这么做的话画布看着变了、getValue() 拿到的还是旧内容，保存下去等于没剪
+    editor.insertValue("");
+    markDirty();
+    refreshMeta();
+    scheduleSave();
+  },
+  tip: (text: string) => editor.tip(text, 4000),
+};
+
 /**
- * 堵掉 WebView2 自带的网页右键菜单（刷新 / 另存为 / 打印 / 检查）。
+ * 接管右键菜单。
  *
- * 这套菜单从 0.1.0 起就一直露在外面——此前只有左栏的文件行接管了右键（tree.ts），
- * 文件夹行、正文空白处、工具栏一右键就弹出浏览器那套。对一个写作 App 来说：
- * 「另存为」会把整个界面当网页存下来，「刷新」会重载整个应用，
- * 而「检查」直接开开发者工具，一点就露出这是个网页壳。
+ * WebView2 自带的那套从 0.1.0 起就一直露在外面——此前只有左栏的文件行接管了右键
+ * （tree.ts），文件夹行、正文、工具栏一右键就弹出浏览器那套：刷新、另存为、打印、
+ * 更多工具、书写方向，开发版里还多一项「检查」。对写作 App 来说这些全是错的：
+ * 「另存为」会把整个界面当网页存下来，「书写方向」是给阿拉伯语希伯来语用的，
+ * 而「检查」一点就开开发者工具、露出这是个网页壳。
  *
  * Tauri 2 没有对应的配置开关，官方讨论区给的做法就是用 JS 拦
  * （tauri-apps/tauri#11808、tauri-apps/wry#30）。
  *
- * **只拦非编辑区。** 正文和输入框里的右键菜单是「剪切 / 复制 / 粘贴」，那个真有用；
- * 拦掉等于把用户早就熟悉的功能拿走，还得自己再造一套一模一样的。
+ * 分三种地方处理：
+ * - **输入框**（重命名、查找）：放行内核那套。那里的剪切复制粘贴是标准行为，
+ *   而且输入框不属于写作面，没必要为它们再造一套菜单。
+ * - **正文**：换成自己的（剪切 / 复制 / 粘贴 / 全选，见 edit-menu.ts）。
+ * - **其余一切**（左栏文件夹行、组头、空白、工具栏）：拦掉，什么都不弹。
  *
  * 挂在冒泡阶段的 document 上：左栏文件行自己那套菜单挂在树容器上，事件先经过它、
- * 再冒到这里。它已经 preventDefault 过了，这里再来一次无害，
- * 所以这段只负责把「剩下的地方」堵上，不会碰已有的菜单。
+ * 再冒到这里，它已经 preventDefault 过了。所以这里要先看一眼有没有人处理过，
+ * 处理过就别再插一脚——否则文件行上会先弹出「重命名/删除」、又被正文菜单顶掉。
  */
 document.addEventListener("contextmenu", (event) => {
   const target = event.target as HTMLElement | null;
-  // isContentEditable 是 DOM 原生属性，可编辑区里的任何一层节点都会返回 true，
-  // 比自己去 closest('[contenteditable]') 再判属性值可靠
-  if (target?.isContentEditable) return;
-  // 重命名时那个 input 也要放行——它同样需要粘贴
   if (target?.closest?.("input, textarea")) return;
+  // 已经有人接管过了（左栏文件行），到此为止
+  if (event.defaultPrevented) return;
   event.preventDefault();
+  // isContentEditable 是 DOM 原生属性，可编辑区里的任何一层节点都返回 true，
+  // 比自己去 closest('[contenteditable]') 再比属性值可靠
+  if (target?.isContentEditable) {
+    showEditMenu(event.clientX, event.clientY, editMenuHost);
+  }
 });
 
 window.addEventListener("blur", () => {

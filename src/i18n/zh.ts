@@ -116,6 +116,13 @@ export const zh: Dict = {
     failed: "开不了新窗口",
     movedOut: (name) => `「${name}」已挪到新窗口`,
   },
+  edit: {
+    cut: "剪切",
+    copy: "复制",
+    paste: "粘贴",
+    selectAll: "全选",
+    pasteFailed: "剪贴板里没有可粘贴的文字",
+  },
   outline: {
     empty: "还没有标题",
     untitled: "（无标题）",

@@ -184,6 +184,11 @@ pub fn run() {
         .manage(PendingFile(Mutex::new(initial_path)))
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        // 正文右键菜单的「粘贴」要用它。为什么非要一个插件不可：
+        // WebView2 里 document.execCommand("paste") 明确不支持（queryCommandSupported 返回 false），
+        // 而 navigator.clipboard.readText() 实测直接挂死——两分钟不返回、不报错、也不弹权限框，
+        // 比明确失败还难兜。项目现有的 fs / dialog / updater 都不管剪贴板，所以只能加这一个。
+        .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
             take_pending_file,
             move_to_trash,

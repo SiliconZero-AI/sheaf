@@ -125,6 +125,15 @@ export interface Dict {
     /** 推出去的正是本窗口开着的那篇，本窗口已经让开、切到了下一篇 */
     movedOut: (name: string) => string;
   };
+  /** 正文里的右键菜单 */
+  edit: {
+    cut: string;
+    copy: string;
+    paste: string;
+    selectAll: string;
+    /** 剪贴板读不出文本（里面是图片、是文件、或被别的程序独占） */
+    pasteFailed: string;
+  };
   outline: {
     empty: string;
     untitled: string;
