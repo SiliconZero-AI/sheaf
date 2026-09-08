@@ -83,6 +83,8 @@ export interface Dict {
     howtoExport: string;
     /** 每篇记住上次读到哪 */
     howtoResume: string;
+    /** 多窗口：右键推到新窗口、Ctrl+Shift+N 开空白窗口 */
+    howtoMultiWindow: string;
     howtoRename: string;
     howtoDelete: string;
     howtoZoomDiagram: string;
@@ -94,6 +96,7 @@ export interface Dict {
     shortcutToggleOutline: string;
     shortcutZoom: string;
     shortcutZoomReset: string;
+    shortcutNewWindow: string;
     versionLabel: string;
   };
   tree: {

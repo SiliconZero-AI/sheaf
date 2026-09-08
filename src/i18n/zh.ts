@@ -80,6 +80,7 @@ export const zh: Dict = {
     howtoTable: "📊 光标停进表格，右上角自动冒出加行/加列按钮",
     howtoExport: "📤 顶栏「导出」可以存成 .md、网页，或直接打印成 PDF",
     howtoResume: "📖 每篇记得上次读到哪，切走再回来、关掉重开都落回原处",
+    howtoMultiWindow: "🪟 右键左栏稿件选「在新窗口打开」，两篇就能拖到屏幕两边并排改；关掉其中一个不影响另一个",
     howtoRename: "✏️ 右键左栏稿件选「重命名」，或选中后按 F2；回车确认，Esc 取消",
     howtoDelete: "🗑️ 右键左栏任意一篇（或选中后按 Del）可以删掉它，删之前会先问一句；删掉的进回收站，紧接着按 Ctrl+Z 能撤回",
     howtoZoomDiagram: "🔎 图片和流程图鼠标移上去，右上角冒出按钮，点开全屏看：滚轮缩放、按住拖动、Esc 关掉",
@@ -91,6 +92,7 @@ export const zh: Dict = {
     shortcutToggleOutline: "收起/展开大纲",
     shortcutZoom: "放大/缩小正文（也可以按住 Ctrl 滚滚轮），比例关掉重开还在",
     shortcutZoomReset: "恢复原始大小",
+    shortcutNewWindow: "开一个新窗口",
     versionLabel: "版本",
   },
   tree: {
