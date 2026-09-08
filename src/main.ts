@@ -2495,6 +2495,34 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
+/**
+ * 堵掉 WebView2 自带的网页右键菜单（刷新 / 另存为 / 打印 / 检查）。
+ *
+ * 这套菜单从 0.1.0 起就一直露在外面——此前只有左栏的文件行接管了右键（tree.ts），
+ * 文件夹行、正文空白处、工具栏一右键就弹出浏览器那套。对一个写作 App 来说：
+ * 「另存为」会把整个界面当网页存下来，「刷新」会重载整个应用，
+ * 而「检查」直接开开发者工具，一点就露出这是个网页壳。
+ *
+ * Tauri 2 没有对应的配置开关，官方讨论区给的做法就是用 JS 拦
+ * （tauri-apps/tauri#11808、tauri-apps/wry#30）。
+ *
+ * **只拦非编辑区。** 正文和输入框里的右键菜单是「剪切 / 复制 / 粘贴」，那个真有用；
+ * 拦掉等于把用户早就熟悉的功能拿走，还得自己再造一套一模一样的。
+ *
+ * 挂在冒泡阶段的 document 上：左栏文件行自己那套菜单挂在树容器上，事件先经过它、
+ * 再冒到这里。它已经 preventDefault 过了，这里再来一次无害，
+ * 所以这段只负责把「剩下的地方」堵上，不会碰已有的菜单。
+ */
+document.addEventListener("contextmenu", (event) => {
+  const target = event.target as HTMLElement | null;
+  // isContentEditable 是 DOM 原生属性，可编辑区里的任何一层节点都会返回 true，
+  // 比自己去 closest('[contenteditable]') 再判属性值可靠
+  if (target?.isContentEditable) return;
+  // 重命名时那个 input 也要放行——它同样需要粘贴
+  if (target?.closest?.("input, textarea")) return;
+  event.preventDefault();
+});
+
 window.addEventListener("blur", () => {
   if (state.dirty) void save();
 });
