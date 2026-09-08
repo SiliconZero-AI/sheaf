@@ -152,16 +152,43 @@ pub fn run() {
         // 双击第二个 .md 时，操作系统其实是想「再开一个 Sheaf」；这个插件拦住那次新启动，
         // 把它的参数转发给已经在跑的这个实例，而不是真的开第二个窗口。
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // 挑一个「接待窗口」：主窗口优先，用户把主窗口关掉之后退而取还活着的任意一个。
+            // Tauri 默认所有窗口都关光了才退进程，所以主窗口不在、别的窗口还在是正常状态。
+            //
+            // **必须定向发给一个窗口，不能广播**：`app.emit` 是全局的，每个窗口都会照做一次，
+            // 于是双击一篇 .md 会在所有开着的窗口里各开一份同一个文件——
+            // 而两个窗口编辑同一个文件时，后存的会一声不响地盖掉先存的。
+            //
+            // 至于「这篇是不是已经在某个窗口开着」，交给前端判（src/window.ts 的 labelForPath）。
+            // 那套路径哈希只该有一份实现：在这里照抄一遍，迟早会因为路径归一化的细节走样，
+            // 而走样的表现恰好就是上面那件要避免的事。
+            let host = app
+                .get_webview_window("main")
+                .or_else(|| app.webview_windows().into_values().next());
+            let Some(window) = host else { return };
             if let Some(path) = extract_md_path(&argv) {
-                let _ = app.emit("open-file", path);
+                // 写全 EventTarget::WebviewWindow 而不是传一个 &str：后者会转成
+                // EventTarget::AnyLabel，而 AnyLabel 的匹配语义有已知毛病
+                // （tauri-apps/tauri#11561）。这里跟前端 getCurrentWebviewWindow().listen()
+                // 注册的 target 精确对上，不留解释空间
+                let _ = app.emit_to(
+                    tauri::EventTarget::WebviewWindow {
+                        label: window.label().to_string(),
+                    },
+                    "open-file",
+                    path,
+                );
             }
-            if let Some(window) = app.get_webview_window("main") {
-                bring_to_front(&window);
-            }
+            bring_to_front(&window);
         }))
         .manage(PendingFile(Mutex::new(initial_path)))
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        // 正文右键菜单的「粘贴」要用它。为什么非要一个插件不可：
+        // WebView2 里 document.execCommand("paste") 明确不支持（queryCommandSupported 返回 false），
+        // 而 navigator.clipboard.readText() 实测直接挂死——两分钟不返回、不报错、也不弹权限框，
+        // 比明确失败还难兜。项目现有的 fs / dialog / updater 都不管剪贴板，所以只能加这一个。
+        .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
             take_pending_file,
             move_to_trash,

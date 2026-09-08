@@ -79,6 +79,7 @@ export const en: Dict = {
     howtoImages: "🖼️ Paste or drag in images — they're saved automatically into <code>images/</code> next to the draft",
     howtoTable: "📊 Put your cursor in a table and row/column buttons pop up in the top-right corner",
     howtoResume: "📖 Every draft remembers where you left off — switch away or restart, you land back in the same place",
+    howtoMultiWindow: "🪟 Right-click a draft and choose “Open in New Window” — put two side by side and edit both; closing one leaves the other running",
     howtoRename: "✏️ Right-click a draft and choose “Rename”, or select it and press F2; Enter confirms, Esc cancels",
     howtoDelete: "🗑️ Right-click any draft on the left (or select it and press Del) to delete it — it asks first, it goes to the Recycle Bin, and Ctrl+Z right after undoes it",
     howtoZoomDiagram:
@@ -93,6 +94,7 @@ export const en: Dict = {
     shortcutToggleOutline: "Collapse/expand the outline",
     shortcutZoom: "Zoom the text in/out (Ctrl + scroll wheel works too) — the level is remembered",
     shortcutZoomReset: "Back to the original size",
+    shortcutNewWindow: "Open a new window",
     versionLabel: "Version",
   },
   tree: {
@@ -110,6 +112,20 @@ export const en: Dict = {
     failed: "Couldn't rename it. The file may already be gone, or open in another program",
     saveFirst: "This draft hasn't saved yet — finish that before renaming it",
     done: (name) => `Renamed to “${name}”`,
+  },
+  win: {
+    openInNew: "Open in New Window",
+    newWindow: "New Window",
+    already: "This file is already open in another window",
+    failed: "Couldn't open a new window",
+    movedOut: (name) => `“${name}” moved to a new window`,
+  },
+  edit: {
+    cut: "Cut",
+    copy: "Copy",
+    paste: "Paste",
+    selectAll: "Select All",
+    pasteFailed: "No text on the clipboard to paste",
   },
   outline: {
     empty: "No headings yet",

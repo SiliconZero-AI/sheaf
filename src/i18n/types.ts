@@ -83,6 +83,8 @@ export interface Dict {
     howtoExport: string;
     /** 每篇记住上次读到哪 */
     howtoResume: string;
+    /** 多窗口：右键推到新窗口、Ctrl+Shift+N 开空白窗口 */
+    howtoMultiWindow: string;
     howtoRename: string;
     howtoDelete: string;
     howtoZoomDiagram: string;
@@ -94,6 +96,7 @@ export interface Dict {
     shortcutToggleOutline: string;
     shortcutZoom: string;
     shortcutZoomReset: string;
+    shortcutNewWindow: string;
     versionLabel: string;
   };
   tree: {
@@ -111,6 +114,28 @@ export interface Dict {
     failed: string;
     saveFirst: string;
     done: (name: string) => string;
+  };
+  /** 多窗口：同时开好几个 Sheaf 窗口，两篇并排改 */
+  win: {
+    /** 左栏右键菜单里那一项 */
+    openInNew: string;
+    /** 顶栏按钮 / 快捷键提示：开一个空白的新窗口 */
+    newWindow: string;
+    /** 点的那篇已经在别的窗口开着，这次只是把那个窗口叫到前面来 */
+    already: string;
+    /** 窗口开不出来（极少见：系统资源不足、label 非法） */
+    failed: string;
+    /** 推出去的正是本窗口开着的那篇，本窗口已经让开、切到了下一篇 */
+    movedOut: (name: string) => string;
+  };
+  /** 正文里的右键菜单 */
+  edit: {
+    cut: string;
+    copy: string;
+    paste: string;
+    selectAll: string;
+    /** 剪贴板读不出文本（里面是图片、是文件、或被别的程序独占） */
+    pasteFailed: string;
   };
   outline: {
     empty: string;

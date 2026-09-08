@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "enables the default permissions",
-  "windows": ["main"],
+  "windows": ["main", "doc-*"],
   "permissions": [
     "core:default",
     "dialog:default",
@@ -20,6 +20,15 @@
     "fs:allow-unwatch",
     "updater:default",
     "core:webview:allow-set-webview-zoom",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-set-focus",
+    "core:window:allow-show",
+    "core:window:allow-unminimize",
+    "core:window:allow-outer-position",
+    "core:window:allow-inner-size",
+    "core:window:allow-scale-factor",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
     {
       "identifier": "fs:scope",
       "allow": [{ "path": "**" }]

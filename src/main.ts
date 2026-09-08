@@ -24,7 +24,7 @@ import { applyStaticI18n, currentLang, onLangChange, t } from "./i18n";
 import { setupLang } from "./lang";
 import type Vditor from "vditor";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
@@ -85,6 +85,15 @@ import {
   captureScrollAnchor,
 } from "./anchor";
 import { DirWatcher, parentDir, type WatchTarget } from "./watch";
+import { showEditMenu } from "./edit-menu";
+import {
+  currentLabel,
+  isMainWindow,
+  openBlankWindow,
+  openPathInNewWindow,
+  parseOpenTarget,
+  windowShowing,
+} from "./window";
 
 function need<T extends HTMLElement>(selector: string): T {
   const el = document.querySelector<T>(selector);
@@ -312,6 +321,7 @@ const tree = new FileTree(
   () => void resumePending(),
   (spaceId, node) => askDelete(spaceId, node),
   (spaceId, node, name) => renameTreeFile(spaceId, node, name),
+  (spaceId, node) => void openNodeInNewWindow(spaceId, node),
 );
 const outline = new Outline(dom.outline, jumpToHeading);
 const globalSearch = new GlobalSearch(
@@ -1913,34 +1923,147 @@ async function setupZoom(): Promise<void> {
   arm();
 }
 
+/**
+ * 把左栏里的某一篇推到一个新窗口去。
+ *
+ * 开之前先把这边的改动落盘：新窗口读的是**磁盘上**那份，
+ * 没保存的话它拿到的是旧内容——两个窗口标题一样、正文却不一样，
+ * 而用户接着在新窗口里改一改、一存，就把这边还没保存的字盖掉了。
+ */
+async function openNodeInNewWindow(spaceId: string, node: FileNode): Promise<void> {
+  const path = loosePathOf(node.handle);
+  // 浏览器端没有窗口这回事，右键菜单本来也只在桌面壳给（见 tree.ts）
+  if (!path) return;
+  // 推出去的是不是本窗口此刻正开着的那篇。是的话，开完之后本窗口得让开
+  const isCurrent = !!state.file && loosePathOf(state.file) === path;
+  try {
+    if (state.dirty && isCurrent) await save();
+    const opened = await openPathInNewWindow(path, node.name);
+    if (!opened) {
+      // 没新开成，说明它本来就开着、刚被提到前面来了。说一声，
+      // 否则用户会以为「点了没反应」——那个窗口可能在另一块屏幕上
+      editor.tip(t().win.already, 3000);
+      return;
+    }
+    if (isCurrent) {
+      await leaveCurrentFile(spaceId, node);
+      editor.tip(t().win.movedOut(node.name), 3500);
+    }
+  } catch (error) {
+    console.error("[Sheaf] 开不了新窗口", error);
+    editor.tip(t().win.failed, 5000);
+  }
+}
+
+/**
+ * 从某一篇上「让开」——它刚被推到新窗口去了，本窗口腾位置切到下一篇。
+ *
+ * **不碰磁盘**：文件好好的，只是换一个窗口显示它。这跟删除是两回事，
+ * 只是「当前这篇没了之后该显示谁」的处理一模一样，所以复用 nextAfterDelete。
+ *
+ * 不让开的话，两个窗口开着同一个文件，各存各的。虽然冲突检测能兜住（会弹框），
+ * 但那是把一次本可以避免的冲突硬塞给用户；而他的意图本来就是
+ * 「把这篇挪到新窗口去」，本窗口腾出来才对得上。
+ */
+async function leaveCurrentFile(spaceId: string, node: FileNode): Promise<void> {
+  const space = state.spaces.find((item) => item.id === spaceId);
+  const successor = space ? nextAfterDelete(space.tree, node.path) : null;
+  // 这两行必须在 openFile 之前，理由跟 doDelete 那条路一模一样：
+  // doOpenFile 开头有一道「切走前先保存上一篇」，不先断开关联的话，
+  // 它会拿这个句柄再写一次盘，把新窗口刚读进去的内容和这边的旧状态搅在一起
+  state.file = null;
+  state.dirty = false;
+  if (successor) {
+    await openFile(spaceId, successor);
+    return;
+  }
+  // 这个工作区就这一篇，推走之后没有下一篇了：清空画布，
+  // 不留一篇指向「已经归别的窗口管」的半截状态
+  images.reset();
+  setDoc(null, "", "", "");
+  editor.setValue("", true);
+  tree.setActive(null, null);
+  refreshMeta();
+  refreshWatchers();
+}
+
+/** 开一个空白的新窗口：文件夹照常恢复，但不自动打开任何一篇 */
+async function openNewBlankWindow(): Promise<void> {
+  try {
+    await openBlankWindow(t().win.newWindow);
+  } catch (error) {
+    console.error("[Sheaf] 开不了新窗口", error);
+    editor.tip(t().win.failed, 5000);
+  }
+}
+
 async function boot(): Promise<void> {
   // 排在最前面：先把比例摆正再渲染，不然开机时正文会先小后大跳一下
   if (isDesktop) await setupZoom();
+
+  // 这个窗口是谁、要它开哪篇。主窗口的地址后面没有参数；
+  // 副窗口是 openPathInNewWindow / openBlankWindow 拼 URL 带进来的。
+  // 判完之后 boot 就分成两条路：主窗口那条一个字没变，副窗口那条只做被指派的事
+  const target = isDesktop
+    ? parseOpenTarget(window.location.search)
+    : { path: null, blank: false };
+  const secondary = target.path !== null || target.blank;
   editor.setValue(t().welcome, true);
   refreshMeta();
   // 先渲染一次：没有工作区时左栏要显示引导，而不是一片空白
   pushTree();
   const handles = await recallRoots();
   if (handles.length > 0) {
-    // 启动时不能弹授权框（不是用户手势），拿不到权限就把「继续上次」露出来等他点
-    await restoreSpaces(handles, false);
+    // 启动时不能弹授权框（不是用户手势），拿不到权限就把「继续上次」露出来等他点。
+    // 副窗口不许自动开「上次那篇」——那篇多半正在主窗口里开着（见 restoreSpaces 的 autoOpen）
+    await restoreSpaces(handles, false, !secondary);
   }
   // 双击 .md 冷启动进来的那一篇优先于「上次那篇」：它是用户此刻的明确意图。
-  // 排在恢复之前领走，否则会先渲染一篇没人要的稿子再被顶掉，画面闪一下
+  // 排在恢复之前领走，否则会先渲染一篇没人要的稿子再被顶掉，画面闪一下。
+  // 每个窗口都要挂上这个监听：主窗口可能已经被用户关掉，
+  // 那时接待「双击 .md」的是还活着的某个副窗口（挑谁由 Rust 那边定）
   const openedByOs = isDesktop ? await setupOsFileOpen() : false;
-  const last = await recallLastFile();
-  // 散篇不挂在任何工作区上，restoreSpaces 恢复不到它，得单独开一次
-  if (!openedByOs && last?.kind === "loose") {
-    const handle = await fileHandleIfExists(last.path);
-    // 文件已经被删了 / 挪走了 / 在拔掉的移动硬盘上，就当没记过。
-    // 启动时甩一句「打开失败」，用户既修不了也不想看
-    if (handle) await openLooseFile(handle);
+
+  if (target.path) {
+    // 副窗口指名了要开哪篇，就只开那篇：不碰「上次那篇」，也不碰冷启动参数
+    await openRequested(target.path);
+  } else if (!secondary) {
+    const last = await recallLastFile();
+    // 散篇不挂在任何工作区上，restoreSpaces 恢复不到它，得单独开一次
+    if (!openedByOs && last?.kind === "loose") {
+      const handle = await fileHandleIfExists(last.path);
+      // 文件已经被删了 / 挪走了 / 在拔掉的移动硬盘上，就当没记过。
+      // 启动时甩一句「打开失败」，用户既修不了也不想看
+      if (handle) await openLooseFile(handle);
+    }
   }
   if (isDesktop) await setupNativeFocus();
   // 查更新排在最后，还要再等几秒：启动这几百毫秒里要恢复工作区、扫目录树、
   // 读回上次那篇并复位光标，一个网络请求挤进来只会让开机更慢。
-  // 用户也不需要开机第一眼就看见更新框——他打开 Sheaf 是来写字的
-  if (isDesktop) window.setTimeout(() => void checkUpdateOnStart(), 3000);
+  // 用户也不需要开机第一眼就看见更新框——他打开 Sheaf 是来写字的。
+  //
+  // **只让主窗口查**：每个窗口各查一次的话，开着两个窗口就弹两个一模一样的更新框，
+  // 而且两边都能点「现在更新」——更新器会杀掉整个进程，等于另一个窗口没保存的字全丢
+  if (isDesktop && isMainWindow()) {
+    window.setTimeout(() => void checkUpdateOnStart(), 3000);
+  }
+}
+
+/**
+ * 副窗口开自己那一篇。
+ *
+ * 先按「工作区里的一篇」找，找不到才当散篇——**顺序不能反**：
+ * 工作区里的稿子被当成散篇打开时，正文里的相对路径图片会全变裂图。
+ * 那是 0.1.2 修过的老 bug（双击 .md 那条路），这里是同一个坑，别再踩一次。
+ */
+async function openRequested(path: string): Promise<void> {
+  const located = locateInSpaces(path);
+  if (located) {
+    await openFile(located.spaceId, located.node, true);
+    return;
+  }
+  const handle = await fileHandleIfExists(path);
+  if (handle) await openLooseFile(handle, true);
 }
 
 /**
@@ -1992,6 +2115,20 @@ async function setupNativeFocus(): Promise<void> {
  */
 async function setupOsFileOpen(): Promise<boolean> {
   const openPath = async (path: string) => {
+    // 这篇已经开在**别的**窗口了 → 把那个窗口叫到前面来，自己不动。
+    // 不这么做的话，用户从资源管理器双击一篇正开着的稿子，会得到第二份同一个文件，
+    // 两个窗口各存各的，后存的静默盖掉先存的。
+    //
+    // 「哪个窗口开着哪篇」只在 JS 这一处算（window.ts 的 labelForPath）。
+    // Rust 那边不重算一遍：同一套哈希写两份，迟早会因为路径归一化的细节而不一致，
+    // 而不一致的表现正好是这里想避免的那件事
+    const existing = await windowShowing(path);
+    if (existing && existing.label !== currentLabel()) {
+      await existing.unminimize().catch(() => {});
+      await existing.show().catch(() => {});
+      await existing.setFocus().catch(() => {});
+      return;
+    }
     // 从外面双击进来的人，下一步就是想写字。
     // Rust 那边的 bring_to_front 只负责把窗口提到前台——窗口有焦点不等于正文有光标，
     // 所以这里要主动把光标放进去（focus=true）。
@@ -1999,8 +2136,16 @@ async function setupOsFileOpen(): Promise<boolean> {
     await openLooseFile(fileHandleFromPath(path), true);
   };
 
-  await listen<string>("open-file", (event) => void openPath(event.payload));
+  // **必须挂在当前窗口上，不能用 @tauri-apps/api/event 那个全局 listen。**
+  // 那个全局的等同于 Rust 的 listen_any：不管事件发给谁它都收
+  // （tauri-apps/tauri#11379、#10182 都是这件事）。于是 Rust 那边辛苦挑出来的
+  // 「接待窗口」形同虚设——双击一篇 .md，所有开着的窗口会各开一份同一个文件。
+  // 这条是真机验收当场抓到的，本地测试和类型检查都盖不住。
+  await getCurrentWebviewWindow().listen<string>("open-file", (event) => void openPath(event.payload));
 
+  // 冷启动参数只有主窗口去领。副窗口是主窗口开出来的，它 boot 的时候主窗口早领完了，
+  // 这里再问一次也只会拿到 null——明写出来是让「谁负责冷启动那一篇」在代码里看得见
+  if (!isMainWindow()) return false;
   const pending = await invoke<string | null>("take_pending_file");
   if (!pending) return false;
   // 这一次要等它开完：boot 得据此决定还要不要恢复「上次那篇」
@@ -2015,6 +2160,12 @@ async function setupOsFileOpen(): Promise<boolean> {
 async function restoreSpaces(
   handles: DirHandle[],
   request: boolean,
+  /**
+   * 恢复完文件夹之后，要不要顺手把「上次那篇」打开。
+   * 副窗口一律传 false：那篇多半正在主窗口里开着，两个窗口编辑同一个文件，
+   * 后存的会一声不响地盖掉先存的，而用户看不出发生了什么。
+   */
+  autoOpen = true,
 ): Promise<void> {
   const last = await recallLastFile();
   const bySource = new Map<number, Workspace>();
@@ -2053,6 +2204,7 @@ async function restoreSpaces(
   // 二来 doOpenFile 会顺手把「上次那篇」的记忆改写成工作区那篇，散篇就再也回不来了
   if (last?.kind === "loose") return;
 
+  if (!autoOpen) return;
   const target = (last && bySource.get(last.index)) || state.spaces[0];
   if (!target || state.dirty) return;
   const node = (last && findFile(target.tree, last.path)) || firstFile(target.tree);
@@ -2330,12 +2482,82 @@ window.addEventListener("keydown", (event) => {
   } else if (event.shiftKey && key === "k") {
     event.preventDefault();
     dom.imageInput.click();
+  } else if (event.shiftKey && key === "n" && isDesktop) {
+    // 开一个空白的新窗口。浏览器端不给：那边 Ctrl+Shift+N 是浏览器自己的无痕窗口，
+    // 抢过来既抢不赢也不该抢
+    event.preventDefault();
+    void openNewBlankWindow();
   } else if (key === "z" && !event.shiftKey && lastDeleted) {
     // 刚删完文件的那一下，Ctrl+Z 撤销的是删除。
     // lastDeleted 为空时**什么都不做也不拦**，原样放给 Vditor 去撤销打字——
     // 这个键的本职是那个，抢过来不还就是在给用户添乱
     event.preventDefault();
     void undoDelete();
+  }
+});
+
+/** 正文右键菜单要用到的两件事：往光标处插字、出事了说一句 */
+const editMenuHost = {
+  insert: (text: string) => {
+    // insertValue 是「在光标处插入」不是「替换选区」——不先清掉选中的字，
+    // 粘贴结果前面会多留一份原文。editor.ts 的 wrapSelection 踩过同一个坑
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) sel.getRangeAt(0)?.deleteContents();
+    editor.insertValue(text);
+    // insertValue 不会触发 Vditor 的 onInput，脏标记、字数、自动保存都得自己跟一遍。
+    // 跟表情面板那条路一模一样（见上面 EmojiPicker 的回调）——漏掉的话
+    // 粘贴进去的字不算「改过」，自动保存不会把它写盘
+    markDirty();
+    refreshMeta();
+    scheduleSave();
+  },
+  deleteSelection: () => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) return;
+    sel.getRangeAt(0)?.deleteContents();
+    // 直接动 DOM 之后 Vditor 并不知道内容变了。用公开的 insertValue("") 逼它把
+    // 当前块重解析一遍——跟 ir-repair.ts 修裸语法用的是同一个手法，
+    // 不这么做的话画布看着变了、getValue() 拿到的还是旧内容，保存下去等于没剪
+    editor.insertValue("");
+    markDirty();
+    refreshMeta();
+    scheduleSave();
+  },
+  tip: (text: string) => editor.tip(text, 4000),
+};
+
+/**
+ * 接管右键菜单。
+ *
+ * WebView2 自带的那套从 0.1.0 起就一直露在外面——此前只有左栏的文件行接管了右键
+ * （tree.ts），文件夹行、正文、工具栏一右键就弹出浏览器那套：刷新、另存为、打印、
+ * 更多工具、书写方向，开发版里还多一项「检查」。对写作 App 来说这些全是错的：
+ * 「另存为」会把整个界面当网页存下来，「书写方向」是给阿拉伯语希伯来语用的，
+ * 而「检查」一点就开开发者工具、露出这是个网页壳。
+ *
+ * Tauri 2 没有对应的配置开关，官方讨论区给的做法就是用 JS 拦
+ * （tauri-apps/tauri#11808、tauri-apps/wry#30）。
+ *
+ * 分三种地方处理：
+ * - **输入框**（重命名、查找）：放行内核那套。那里的剪切复制粘贴是标准行为，
+ *   而且输入框不属于写作面，没必要为它们再造一套菜单。
+ * - **正文**：换成自己的（剪切 / 复制 / 粘贴 / 全选，见 edit-menu.ts）。
+ * - **其余一切**（左栏文件夹行、组头、空白、工具栏）：拦掉，什么都不弹。
+ *
+ * 挂在冒泡阶段的 document 上：左栏文件行自己那套菜单挂在树容器上，事件先经过它、
+ * 再冒到这里，它已经 preventDefault 过了。所以这里要先看一眼有没有人处理过，
+ * 处理过就别再插一脚——否则文件行上会先弹出「重命名/删除」、又被正文菜单顶掉。
+ */
+document.addEventListener("contextmenu", (event) => {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest?.("input, textarea")) return;
+  // 已经有人接管过了（左栏文件行），到此为止
+  if (event.defaultPrevented) return;
+  event.preventDefault();
+  // isContentEditable 是 DOM 原生属性，可编辑区里的任何一层节点都返回 true，
+  // 比自己去 closest('[contenteditable]') 再比属性值可靠
+  if (target?.isContentEditable) {
+    showEditMenu(event.clientX, event.clientY, editMenuHost);
   }
 });
 

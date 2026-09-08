@@ -17,7 +17,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { t } from "./i18n";
 import { parseAnchor, type DocAnchor } from "./anchor";
 import { isDesktop } from "./env";
-import { parseZoom, stateGet, stateSet } from "./store";
+import { parseZoom, stateGet, stateSet, stateUpdate } from "./store";
 
 // 单独一个 env 模块是为了断开循环引用：store 也要判断跑在哪儿，
 // 而 fs 要用 store。从这里再导出一次，上层的 import 路径一个都不用改
@@ -456,9 +456,14 @@ export async function recallPositions(): Promise<PositionMap> {
  */
 export async function rememberPosition(key: string, position: FilePosition): Promise<void> {
   try {
-    const all = await recallPositions();
-    all[key] = position;
-    await stateSet(POSITIONS_KEY, trimPositions(all));
+    // 走 stateUpdate 而不是「读内存 → 改 → stateSet」：这张表是所有稿子共用的一个键，
+    // 而每个窗口只改自己那一条。拿本窗口开机时的快照整份写下去，
+    // 会把别的窗口这段时间记下的位置全抹掉（见 store.ts 的 stateUpdate）
+    await stateUpdate(POSITIONS_KEY, (current) => {
+      const all = parsePositions(current);
+      all[key] = position;
+      return trimPositions(all);
+    });
   } catch (error) {
     console.warn("[Sheaf] 记不住阅读位置", error);
   }
@@ -484,9 +489,12 @@ export function migratePositionMap(
 /** 改名成功后持久化阅读位置迁移；记忆写不进去不能反过来把磁盘改名判成失败 */
 export async function migrateRememberedPosition(from: LastFile, to: LastFile): Promise<void> {
   try {
-    const all = await recallPositions();
-    const next = migratePositionMap(all, from, to);
-    if (next !== all) await stateSet(POSITIONS_KEY, trimPositions(next));
+    // 同 rememberPosition：改的是这张共用大表里的一条，必须基于磁盘上最新那份来改
+    await stateUpdate(POSITIONS_KEY, (current) => {
+      const all = parsePositions(current);
+      const next = migratePositionMap(all, from, to);
+      return next === all ? all : trimPositions(next);
+    });
   } catch (error) {
     console.warn("[Sheaf] 改名后迁移不了阅读位置", error);
   }

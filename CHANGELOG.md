@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.10 — 2026-09-08
+
+You can open several windows at once and edit two drafts side by side. The right-click menu is now ours as well.
+
+- **Right-click any draft in the file panel and there's a new "Open in New Window".** A second Sheaf window opens with that draft, so you can drag them to either half of the screen and edit both — or put one next to a browser or Word. Until now only one draft could be open at a time; clicking another replaced it, so comparing two was impossible.
+- **`Ctrl+Shift+N` opens a blank new window.** Your folders come back as usual, but no draft opens automatically, so it never collides with the one you already have open.
+- **A given draft only ever has one window.** Clicking it again jumps to that window instead of opening a second copy, and so does double-clicking an already-open `.md` from File Explorer. That rules out two windows editing the same file where the later save silently overwrites the earlier one.
+- **Pushing the draft you're currently writing into a new window moves the current window to the next draft** and says "moved to a new window"; if the folder has no next draft, the canvas is cleared.
+- **Every window is a complete Sheaf**: file panel, folders, draft switching, independent saving. Closing one leaves the others running, and the app exits when the last one closes.
+- **The editor's right-click menu is now ours**: Cut, Copy, Paste, Select All, with keyboard shortcuts shown alongside. Cut and Copy are greyed out when nothing is selected. It used to show the web engine's own menu (Reload, Save as, Print, More tools, Writing direction), none of which is useful for writing.
+- **Right-clicking folders or empty space in the file panel no longer shows a web menu** — nothing appears. Text inputs like rename and find keep the system menu, where cut/copy/paste behave the way you'd expect.
+
 ## 0.1.9 — 2026-08-29
 
 Single-file images and file-panel naming are now complete.

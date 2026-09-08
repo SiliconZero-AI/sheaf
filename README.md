@@ -13,6 +13,7 @@ Tested from start to finish with real writing. Packaged as a Windows installer (
 ## ✨ Features
 
 - 📁 **Multi-folder workspace**: mount several folders at once, drag a folder/`.md`/image in to start — autosaves before you switch drafts, nothing lost
+- 🪟 **Side-by-side windows**: right-click a draft and choose "Open in New Window" to edit two at once on either half of the screen — or next to a browser or Word; `Ctrl+Shift+N` opens a blank one. A given draft only ever has one window, closing one leaves the others running, and the app exits when the last one closes
 - ✍️ **Single-pane instant rendering**: a heading looks like a heading, not source-on-one-side-preview-on-the-other; pasted web content converts to Markdown automatically
 - 🔍 **Real search**: `Ctrl+F` to find within a draft, `Ctrl+Shift+F` to search across every open folder, an always-on outline in the right pane
 - 🎨 **Full syntax support**: `==highlight==`, superscript/subscript, footnotes, task lists, tables, Mermaid, an emoji picker — the common ones have toolbar buttons, no syntax to memorize

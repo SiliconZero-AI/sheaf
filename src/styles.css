@@ -1860,6 +1860,35 @@ body {
   color: var(--danger-ink);
 }
 
+/* 正文右键菜单里那几项带快捷键提示。display 从 block 改成 flex 只影响
+   带 hint 的那些项——没有 hint 的子元素时，flex 的表现跟 block 一致 */
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  justify-content: space-between;
+}
+
+.ctx-hint {
+  color: var(--ink-3, var(--ink-2));
+  opacity: 0.6;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 灰掉但不藏起来：藏起来会让菜单每次高矮不一，用户点之前得先找一遍位置。
+   指针也换成默认箭头，手感上就知道点不动 */
+.ctx-item[data-disabled="1"] {
+  color: var(--ink-3, var(--ink-2));
+  opacity: 0.42;
+  cursor: default;
+}
+
+.ctx-item[data-disabled="1"]:hover {
+  background: transparent;
+  color: var(--ink-3, var(--ink-2));
+}
+
 /* 删除框只有一句话和两个按钮，用冲突框那个 560px 会空得发虚 */
 .conflict-box.is-narrow {
   width: min(420px, 100%);

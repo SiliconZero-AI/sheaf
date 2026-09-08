@@ -17,6 +17,7 @@
 import { exists, mkdir, readTextFile, rename, writeTextFile } from "@tauri-apps/plugin-fs";
 import { configDir, join } from "@tauri-apps/api/path";
 import { isDesktop } from "./env";
+import { currentLabel } from "./window";
 
 /** 存得下的东西。键名跟 IndexedDB 时代保持一致，浏览器那条路一个字节都没变 */
 export type StateKey = "roots" | "root" | "last-file" | "positions" | "zoom";
@@ -152,6 +153,35 @@ export function isEmptyState(bag: StateBag): boolean {
   return Object.keys(bag).length === 0;
 }
 
+/**
+ * 把本窗口改过的那几个键，盖到刚从磁盘读回来的那份上。
+ *
+ * **这是多窗口能共存的全部理由。** 从前只有一个窗口，落盘时把内存里整份 bag 写下去
+ * 天经地义；开了第二个窗口之后，那样做就成了「B 窗口随便存点什么，就把 A 窗口
+ * 刚挂上的文件夹抹掉」——因为 B 内存里那份 roots 还是它开机时的快照。
+ *
+ * 按键分开盖之后，A 只碰 roots、B 只碰 positions，两边各写各的，谁也不动谁。
+ * 两个窗口改**同一个**键时仍然是后写的赢——那是真冲突，这里不假装能解决；
+ * 代价上限是丢一次「上次读到哪」，不涉及稿件内容。
+ *
+ * keys 里的键在 mine 里没有值，表示本窗口把它删了（stateSet 传 null 那条路），
+ * 所以要从结果里删掉，不能当成「没改过」跳过——不然用户关掉最后一个文件夹之后，
+ * 那份记录会被磁盘上的旧值一次次救回来。
+ */
+export function mergeState(
+  base: StateBag,
+  mine: StateBag,
+  keys: Iterable<StateKey>,
+): StateBag {
+  const next: StateBag = { ...base };
+  for (const key of keys) {
+    const value = mine[key];
+    if (value === undefined) delete next[key];
+    else next[key] = value;
+  }
+  return next;
+}
+
 // ---------- 浏览器后端：IndexedDB ----------
 //
 // 从 fs.ts 原样搬过来，一行没改。库名保持旧值：这是持久化标识，
@@ -208,7 +238,10 @@ function statePaths(): Promise<{ dir: string; file: string; tmp: string }> {
     cachedPaths = (async () => {
       const dir = await join(await configDir(), FOLDER);
       const file = await join(dir, FILE_NAME);
-      return { dir, file, tmp: `${file}.tmp` };
+      // 临时文件名带上窗口 label：落盘走的是「先写 .tmp 再改名顶上去」，
+      // 两个窗口共用同一个 .tmp 会互相踩——A 刚写一半，B 把它改名走了，
+      // 于是 state.json 里躺着半截 JSON，下次开机整份记忆判成「内容坏了」
+      return { dir, file, tmp: `${file}.${currentLabel()}.tmp` };
     })();
   }
   return cachedPaths;
@@ -306,20 +339,49 @@ async function writeBag(next: StateBag): Promise<void> {
   await rename(path.tmp, path.file);
 }
 
+/**
+ * 从磁盘重新读一份最新的。读不动、或者内容坏了就返回 null——
+ * 两种都表示「拿不到可信的基准」，调用方据此决定退路。
+ *
+ * 注意这里不碰 writable：那个开关管的是启动时那次读，
+ * 一次临时的读失败不该把整个 session 变成只读。
+ */
+async function readDisk(): Promise<StateBag | null> {
+  try {
+    const path = await statePaths();
+    if (!(await exists(path.file))) return {};
+    const { bag: stored, broken } = readStateFile(await readTextFile(path.file));
+    return broken ? null : stored;
+  } catch {
+    return null;
+  }
+}
+
 // 落盘不排队等待，但同一时刻只允许一个写在跑：
-// 后来的改动标脏、跟着当前这次一起等，写完再补一遍。
+// 后来的改动记下键名、跟着当前这次一起等，写完再补一遍。
 // 不额外加防抖——上层 schedulePositionSave 已经攒了 600ms 一拍，
-// 这里再攒一次只会让「关窗口前补最后一次」那条路白等
+// 这里再攒一次只会让「关窗口前补最后一次」那条路白等。
+//
+// 记的是**键名**不是一个脏标记：多窗口下落盘要按键合并（见 mergeState），
+// 不知道自己改过哪几个键就没法只盖那几个
 let flushing: Promise<void> | null = null;
-let dirty = false;
+const pending = new Set<StateKey>();
 
 function flush(): Promise<void> {
   if (flushing) return flushing;
   flushing = (async () => {
     try {
-      while (dirty) {
-        dirty = false;
-        await writeBag(bag);
+      while (pending.size > 0) {
+        const keys = [...pending];
+        pending.clear();
+        const disk = await readDisk();
+        // 读不到可信的基准时退回「只写自己这份」：这一趟可能盖掉别的窗口刚写的东西，
+        // 但换成「什么都不写」的话，本窗口的改动也一起没了——而那是用户刚做出来的
+        const next = disk ? mergeState(disk, bag, keys) : { ...bag };
+        // 内存跟盘上对齐：别的窗口写进去的东西这一刻也一并吸进来，
+        // 下次合并才不会拿一份更旧的值去盖人家
+        bag = next;
+        await writeBag(next);
       }
     } catch (error) {
       console.warn("[Sheaf] 记忆写不进配置文件", error);
@@ -346,6 +408,40 @@ export async function stateSet(key: StateKey, value: unknown): Promise<void> {
   if (value === undefined || value === null) delete bag[key];
   else bag[key] = value;
   if (!writable) return;
-  dirty = true;
+  pending.add(key);
+  await flush();
+}
+
+/**
+ * 读一样记忆、改一改、再存回去——中间那次「读」保证拿到的是**磁盘上最新的**，
+ * 不是本窗口开机时那份快照。
+ *
+ * 什么时候必须用它而不是 stateSet：这个键是一张大表、而每个窗口只改其中几条时。
+ * 阅读位置（positions）正是这样——所有稿子的位置挤在一个键里，每滚一下就重写一次。
+ * 用 stateSet 的话，A 窗口写的是「A 开机时看到的全表 + A 这一篇」，
+ * 一落盘就把 B 窗口这段时间记下的所有条目抹平了。
+ *
+ * 这不是万无一失的事务：读和写之间仍有一个极窄的窗口。但落盘走同一条串行队列，
+ * 而这类写入本身是用户操作触发的（滚动、切稿），撞上的概率极低，
+ * 撞上的代价也只是丢一条「上次读到哪」。为它上文件锁不划算。
+ */
+export async function stateUpdate(
+  key: StateKey,
+  change: (current: unknown) => unknown,
+): Promise<void> {
+  if (!isDesktop) {
+    const current = await idbGet<unknown>(key);
+    return idbSet(key, change(current));
+  }
+  await load();
+  const disk = await readDisk();
+  // 读不到磁盘上那份就拿内存里的顶上：改一份可能过期的数据，
+  // 好过因为读不动就干脆不记
+  const base = disk ? disk[key] : bag[key];
+  const value = change(base);
+  if (value === undefined || value === null) delete bag[key];
+  else bag[key] = value;
+  if (!writable) return;
+  pending.add(key);
   await flush();
 }
