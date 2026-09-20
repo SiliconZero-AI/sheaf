@@ -71,6 +71,8 @@ require("./anchor.test.cjs");
 console.log("");
 require("./watch-rules.test.cjs");
 console.log("");
+require("./drop-markdown.test.cjs");
+console.log("");
 require("./ir-repair.test.cjs");
 console.log("");
 require("./lightbox-view.test.cjs");

@@ -731,7 +731,12 @@ export type TreeNode = FileNode | DirNode;
 const SKIP_DIRS = new Set(["node_modules", "dist", "build", "target", "__pycache__"]);
 const MAX_DEPTH = 5;
 
-function isMarkdown(name: string): boolean {
+/**
+ * 扫树和拖拽入口共用这一份白名单：能进来的和左栏列得出来的必须是同一批。
+ * 从前拖拽那边自己写了一份还多带了 `.txt`，于是 `.txt` 能拖进来，
+ * 保存时被 Lute 按 Markdown 往返重写一遍，用户的原文就被静默改了。
+ */
+export function isMarkdown(name: string): boolean {
   return /\.(md|markdown)$/i.test(name);
 }
 
