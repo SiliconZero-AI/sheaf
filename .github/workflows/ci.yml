@@ -17,3 +17,25 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+
+  # 前面那步只跑前端，src-tauri 写坏了 CI 照样绿，要到发版打包时才炸。
+  # 这里单独编一遍 Rust 把它提前暴露出来。runner 用 windows-latest：
+  # Sheaf 只发 Windows，跟发版流水线的目标平台一致，也省掉 Linux 上 Tauri 的一堆系统依赖。
+  #
+  # 只做 cargo check，不打包：类型和借用错误在这一步就全暴露了，而完整 build
+  # 要多花十几分钟，那是发版流水线的活。
+  # 前端产物不用先构建——debug 下 tauri 的 generate_context! 走 devUrl 分支，不读 ../dist。
+  cargo-check:
+    name: cargo check (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # --locked：不许在 CI 里悄悄改 Cargo.lock。锁文件跟不上 Cargo.toml 就直接报错，
+      # 免得本地和 CI 编的是两套依赖版本。
+      - run: cargo check --locked
+        working-directory: src-tauri
