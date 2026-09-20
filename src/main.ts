@@ -60,6 +60,7 @@ import {
   UNKNOWN_STAMP,
   hitsWatchedFile,
   affectsTree,
+  isMarkdown,
   samePath,
   missingStep,
   settleStep,
@@ -1767,10 +1768,6 @@ async function pickSingleFile(): Promise<void> {
 
 // ---------- 拖进来就能开 ----------
 
-function isMarkdownName(name: string): boolean {
-  return /\.(md|markdown|txt)$/i.test(name);
-}
-
 /** 拖进来的东西里有没有非图片。纯图片就别拦，交给 Vditor 落盘到 images/ */
 function hasNonImage(transfer: DataTransfer): boolean {
   return [...transfer.items].some(
@@ -1806,7 +1803,7 @@ async function handleDropped(jobs: Promise<FileSystemHandle | null>[]): Promise<
   const dropped = handles as unknown as (DirHandle | FileHandle | null)[];
   const dirs = dropped.filter((h): h is DirHandle => h?.kind === "directory");
   const files = dropped.filter(
-    (h): h is FileHandle => h?.kind === "file" && isMarkdownName(h.name),
+    (h): h is FileHandle => h?.kind === "file" && isMarkdown(h.name),
   );
 
   if (dirs.length === 0 && files.length === 0) {
