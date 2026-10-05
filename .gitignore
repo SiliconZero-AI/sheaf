@@ -49,3 +49,6 @@ sheaf-conflict-dialog.html
 # 但它的正式那份写在 tauri.conf.json 里，这里出现的只会是误放，一并挡掉。
 *.key
 *.key.pub
+
+# Local design and validation archive; keep out of the public repository.
+/.local/
