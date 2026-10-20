@@ -1,4 +1,5 @@
 import type { Dict } from "./types";
+import { isMac } from "../env";
 
 export const en: Dict = {
   page: {
@@ -81,11 +82,14 @@ export const en: Dict = {
     howtoResume: "📖 Every draft remembers where you left off — switch away or restart, you land back in the same place",
     howtoMultiWindow: "🪟 Right-click a draft and choose “Open in New Window” — put two side by side and edit both; closing one leaves the other running",
     howtoRename: "✏️ Right-click a draft and choose “Rename”, or select it and press F2; Enter confirms, Esc cancels",
-    howtoDelete: "🗑️ Right-click any draft on the left (or select it and press Del) to delete it — it asks first, it goes to the Recycle Bin, and Ctrl+Z right after undoes it",
+    howtoDelete: isMac
+      ? "🗑️ Right-click a draft and choose Delete. It asks first and moves the file to Trash; drag it from Finder’s Trash back to its original folder if needed. In-app deletion undo is unavailable on macOS."
+      : "🗑️ Right-click any draft on the left (or select it and press Del) to delete it — it asks first, it goes to the Recycle Bin, and Ctrl+Z right after undoes it",
     howtoZoomDiagram:
       "🔎 Hover an image or a diagram and a button appears in its corner — open it full screen, scroll to zoom, drag to pan, Esc to close",
-    howtoUpdate:
-      "⬆️ New versions announce themselves — one click installs. You can also check by hand below",
+    howtoUpdate: isMac
+      ? "⬆️ This local macOS build is updated manually; automatic updates are unavailable."
+      : "⬆️ New versions announce themselves — one click installs. You can also check by hand below",
     howtoExport: "📤 “Export” in the top bar saves as .md, a web page, or prints straight to PDF",
     shortcutsTitle: "⌨️ Shortcuts",
     shortcutFind: "Find in current draft",
@@ -160,6 +164,7 @@ export const en: Dict = {
     reloadFailed: "Could not read the version on disk; nothing changed",
   },
   update: {
+    unavailable: "Automatic updates are unavailable for this local macOS build",
     title: "A new version is available",
     body: (from, to) => `Sheaf ${to} is ready to install. You are on ${from}.`,
     now: "Update now",
@@ -185,10 +190,10 @@ export const en: Dict = {
     menu: "Delete",
     title: "Delete this file?",
     cancel: "Cancel",
-    confirm: "Move to Recycle Bin",
+    confirm: isMac ? "Move to Trash" : "Move to Recycle Bin",
     closeTitle: "Cancel Esc",
-    safe: "Goes to the Recycle Bin — press Ctrl+Z if you change your mind",
-    done: (name) => `Moved “${name}” to the Recycle Bin`,
+    safe: isMac ? "Moves to Trash — drag it back to its original folder if needed; in-app undo is unavailable" : "Goes to the Recycle Bin — press Ctrl+Z if you change your mind",
+    done: (name) => isMac ? `Moved “${name}” to Trash` : `Moved “${name}” to the Recycle Bin`,
     failed: "Could not delete it. The file may already be gone, or open in another program",
     undone: (name) => `Restored “${name}”`,
     undoFailed: "Could not restore it. It may have been emptied from the Recycle Bin, or something with the same name is back in its place",

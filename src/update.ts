@@ -12,6 +12,7 @@
 
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { isDesktop } from "./fs";
+import { isMac } from "./env";
 
 export type { Update };
 
@@ -55,12 +56,15 @@ export function canInstallNow(guard: InstallGuard): InstallVerdict {
 export type CheckResult =
   | { kind: "update"; update: Update }
   | { kind: "current" }
+  | { kind: "unsupported" }
   | { kind: "failed"; error: unknown };
 
 export async function checkForUpdate(): Promise<CheckResult> {
   // 浏览器版没有更新器这回事。静态 import 在浏览器里只要不调用就不会炸（跟 fs.ts 里
   // 那几个 @tauri-apps/plugin-fs 的 import 同一个道理），所以守卫放在这里就够了
   if (!isDesktop) return { kind: "current" };
+  // Mac 自用版还没有更新分发，不能把 Windows 清单的结果说成「已是最新版」。
+  if (isMac) return { kind: "unsupported" };
   try {
     const update = await check();
     return update ? { kind: "update", update } : { kind: "current" };

@@ -195,6 +195,7 @@ export interface Dict {
     checkLabel: string;
     checking: string;
     upToDate: string;
+    unavailable: string;
     checkFailed: string;
   };
   /** 删除文件：右键菜单那一项 + 确认框 + 删完/删不掉的反馈 */

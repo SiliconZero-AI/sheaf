@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add a local macOS `.app` build and handle Finder file-open events during startup and while running.
+- Mac deletion uses the system file manager on a background worker, avoiding a blocked Finder automation request. Prompts explain how to drag a deleted file out of Trash; the undo shortcut stays with the editor instead of invoking an unsupported file restore command.
+- Mac builds explain that automatic updates are unavailable and do not check the Windows update feed at startup.
+
 ## 0.1.10 — 2026-09-08
 
 You can open several windows at once and edit two drafts side by side. The right-click menu is now ours as well.

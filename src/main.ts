@@ -10,6 +10,7 @@ import { GlobalSearch } from "./global-search";
 import { TableToolbar } from "./table-toolbar";
 import { DiagramLightbox } from "./lightbox";
 import { HelpPanel } from "./help";
+import { isMac } from "./env";
 import {
   canInstallNow,
   checkForUpdate,
@@ -932,6 +933,8 @@ async function checkUpdateManually(): Promise<void> {
       updatePrompt.show(result.update);
     } else if (result.kind === "current") {
       showCheckStatus(t().update.upToDate);
+    } else if (result.kind === "unsupported") {
+      showCheckStatus(t().update.unavailable);
     } else {
       console.warn("[Sheaf] 查更新失败", result.error);
       showCheckStatus(t().update.checkFailed);
@@ -1491,7 +1494,7 @@ async function doDelete(): Promise<void> {
 
   // 必须放在上面那次 openFile 之后：doOpenFile 里会清掉 lastDeleted（切稿就把 Ctrl+Z 交还给正文），
   // 写在前面会被自己刚触发的那次自动切稿当场抹掉，撤销就永远按不动
-  lastDeleted = { abs, spaceId, treePath: node.path, name, wasCurrent };
+  lastDeleted = isMac ? null : { abs, spaceId, treePath: node.path, name, wasCurrent };
   editor.tip(t().del.done(name), 4000);
 }
 
@@ -2041,7 +2044,7 @@ async function boot(): Promise<void> {
   //
   // **只让主窗口查**：每个窗口各查一次的话，开着两个窗口就弹两个一模一样的更新框，
   // 而且两边都能点「现在更新」——更新器会杀掉整个进程，等于另一个窗口没保存的字全丢
-  if (isDesktop && isMainWindow()) {
+  if (isDesktop && !isMac && isMainWindow()) {
     window.setTimeout(() => void checkUpdateOnStart(), 3000);
   }
 }

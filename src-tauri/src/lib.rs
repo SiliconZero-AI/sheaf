@@ -3,7 +3,12 @@ use tauri::{Emitter, Manager};
 
 /// 冷启动时命令行参数里带的那篇 .md（如果有）。前端就绪后调 `take_pending_file` 领走，
 /// 领过一次就清空——避免重建 WebView 实例（语言切换那条路）时被误当成「又双击了一次」重开。
-struct PendingFile(Mutex<Option<String>>);
+struct PendingOpen {
+    path: Option<String>,
+    ready: bool,
+}
+
+struct PendingFile(Mutex<PendingOpen>);
 
 /// 操作系统「打开方式」传来的参数里找第一个 .md/.markdown 路径。
 /// 参数里还会混着可执行文件自己的路径、Windows 有时附带的其它 flag，所以不能直接拿 argv[1]。
@@ -18,7 +23,35 @@ fn extract_md_path(args: &[String]) -> Option<String> {
 
 #[tauri::command]
 fn take_pending_file(state: tauri::State<PendingFile>) -> Option<String> {
-    state.0.lock().unwrap().take()
+    let mut pending = state.0.lock().unwrap();
+    pending.ready = true;
+    pending.path.take()
+}
+
+/// Finder 在 Mac 上通过 Opened 事件传入文件 URL，不走 Windows 的命令行参数。
+/// 前端还没挂监听时先留存，避免从 Finder 冷启动时丢掉用户点开的稿件。
+#[cfg(target_os = "macos")]
+fn open_macos_file(app: &tauri::AppHandle, path: String) {
+    let state = app.state::<PendingFile>();
+    let mut pending = state.0.lock().unwrap();
+    if !pending.ready {
+        pending.path = Some(path);
+        return;
+    }
+    drop(pending);
+    if let Some(window) = app
+        .get_webview_window("main")
+        .or_else(|| app.webview_windows().into_values().next())
+    {
+        let _ = app.emit_to(
+            tauri::EventTarget::WebviewWindow {
+                label: window.label().to_string(),
+            },
+            "open-file",
+            path,
+        );
+        bring_to_front(&window);
+    }
 }
 
 /// 把一个文件挪进系统回收站。**不是永久删除**——这是这条命令存在的全部理由。
@@ -31,8 +64,21 @@ fn take_pending_file(state: tauri::State<PendingFile>) -> Option<String> {
 /// 错误只回原文给前端打日志用，**不在这里拼给用户看的话**——
 /// 那属于 i18n，词典在 src/i18n/，Rust 这边不该有第二份中文。
 #[tauri::command]
-fn move_to_trash(path: String) -> Result<(), String> {
-    #[cfg(desktop)]
+async fn move_to_trash(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        // 默认 Finder 方法会等 AppleScript/自动化授权；同步执行会阻塞桌面事件循环。
+        // 使用已有库的系统文件 API，并把可能较慢的磁盘操作移到后台。
+        tauri::async_runtime::spawn_blocking(move || {
+            use trash::macos::{DeleteMethod, TrashContextExtMacos};
+            let mut context = trash::TrashContext::new();
+            context.set_delete_method(DeleteMethod::NsFileManager);
+            context.delete(&path).map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+    #[cfg(all(desktop, not(target_os = "macos")))]
     {
         trash::delete(&path).map_err(|error| error.to_string())
     }
@@ -181,7 +227,10 @@ pub fn run() {
             }
             bring_to_front(&window);
         }))
-        .manage(PendingFile(Mutex::new(initial_path)))
+        .manage(PendingFile(Mutex::new(PendingOpen {
+            path: initial_path,
+            ready: false,
+        })))
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         // 正文右键菜单的「粘贴」要用它。为什么非要一个插件不可：
@@ -210,6 +259,19 @@ pub fn run() {
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = _event {
+                let paths: Vec<String> = urls
+                    .iter()
+                    .filter_map(|url| url.to_file_path().ok())
+                    .filter_map(|path| path.to_str().map(str::to_owned))
+                    .collect();
+                if let Some(path) = extract_md_path(&paths) {
+                    open_macos_file(_app, path);
+                }
+            }
+        });
 }
