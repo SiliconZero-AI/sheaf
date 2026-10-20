@@ -2,3 +2,6 @@
 export const isDesktop =
   typeof window !== "undefined" &&
   (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ !== undefined;
+
+/** Mac 的界面提示与桌面能力；不需要额外的系统插件。 */
+export const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);

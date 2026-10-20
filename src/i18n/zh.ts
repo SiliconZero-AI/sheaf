@@ -1,4 +1,5 @@
 import type { Dict } from "./types";
+import { isMac } from "../env";
 
 export const zh: Dict = {
   page: {
@@ -82,9 +83,11 @@ export const zh: Dict = {
     howtoResume: "📖 每篇记得上次读到哪，切走再回来、关掉重开都落回原处",
     howtoMultiWindow: "🪟 右键左栏稿件选「在新窗口打开」，两篇就能拖到屏幕两边并排改；关掉其中一个不影响另一个",
     howtoRename: "✏️ 右键左栏稿件选「重命名」，或选中后按 F2；回车确认，Esc 取消",
-    howtoDelete: "🗑️ 右键左栏任意一篇（或选中后按 Del）可以删掉它，删之前会先问一句；删掉的进回收站，紧接着按 Ctrl+Z 能撤回",
+    howtoDelete: isMac
+      ? "🗑️ 右键左栏稿件选「删除」，确认后会移到废纸篓；删错了请从访达废纸篓拖回原文件夹，Mac 暂不支持在应用内撤销删除"
+      : "🗑️ 右键左栏任意一篇（或选中后按 Del）可以删掉它，删之前会先问一句；删掉的进回收站，紧接着按 Ctrl+Z 能撤回",
     howtoZoomDiagram: "🔎 图片和流程图鼠标移上去，右上角冒出按钮，点开全屏看：滚轮缩放、按住拖动、Esc 关掉",
-    howtoUpdate: "⬆️ 有新版会自己提示你，点一下就装好；也可以在下面手动查一次",
+    howtoUpdate: isMac ? "⬆️ Mac 自用版需要手动替换应用，暂不支持自动更新" : "⬆️ 有新版会自己提示你，点一下就装好；也可以在下面手动查一次",
     shortcutsTitle: "⌨️ 快捷键",
     shortcutFind: "当前稿子内查找",
     shortcutGlobalFind: "跨文件夹全局搜索",
@@ -158,6 +161,7 @@ export const zh: Dict = {
     reloadFailed: "读不出磁盘上的版本，先保持现状",
   },
   update: {
+    unavailable: "Mac 自用版暂不支持自动更新，请手动替换应用",
     title: "有新版本可用",
     body: (from, to) => `Sheaf ${to} 可以装了，你现在用的是 ${from}。`,
     now: "现在更新",
@@ -179,10 +183,10 @@ export const zh: Dict = {
     menu: "删除",
     title: "删除这个文件？",
     cancel: "取消",
-    confirm: "移到回收站",
+    confirm: isMac ? "移到废纸篓" : "移到回收站",
     closeTitle: "取消 Esc",
-    safe: "会移到回收站，删错了按 Ctrl+Z 能撤回",
-    done: (name) => `已把「${name}」移到回收站`,
+    safe: isMac ? "会移到废纸篓，删错了请从废纸篓拖回原文件夹；暂不支持应用内撤销" : "会移到回收站，删错了按 Ctrl+Z 能撤回",
+    done: (name) => isMac ? `已把「${name}」移到废纸篓` : `已把「${name}」移到回收站`,
     failed: "删不掉。文件可能已经不在了，或者正被别的程序占用",
     undone: (name) => `已把「${name}」还原回来`,
     undoFailed: "还原不了。它可能已经被清出回收站，或者原来的位置又有了同名文件",

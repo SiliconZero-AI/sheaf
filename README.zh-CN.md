@@ -36,7 +36,7 @@
 
 **装过一次之后就不用再来了**：从 0.1.4 起，有新版 Sheaf 会自己提示并完成更新。已经装了 0.1.3 或更早版本的话，这里手动下载一次，之后交给它自己。
 
-macOS / Linux 安装包还在做，见下面「路线图」。
+macOS 已可从源码构建本地应用（见下文），暂未提供公开下载；Linux 安装包仍在路线图中。
 
 ## 🛠️ 从源码构建
 
@@ -59,6 +59,17 @@ npm run tauri build
 
 安装包在 `src-tauri/target/release/bundle/nsis/`。
 
+构建 macOS 本地应用，需要先安装 Apple 的 Xcode Command Line Tools 和 Rust，然后运行：
+
+```bash
+npm install
+npm run tauri build
+```
+
+Mac 专用配置会生成 `src-tauri/target/release/bundle/macos/Sheaf.app`。复制到「应用程序」，再拖到程序坞即可。要设为 Markdown 默认应用，在访达选中一个 `.md`，打开「显示简介」，在「打开方式」中选择 Sheaf，点击「全部更改」；如有需要，对 `.markdown` 重复一次。Mac 上保存、搜索和新建窗口快捷键也支持 Command。
+
+这是本地构建，未经 Developer ID 签名或 Apple 公证。Mac 暂不支持自动更新和应用内撤销删除；删掉的文件请从访达废纸篓拖回原文件夹。已在 Apple Silicon、macOS 27.0.1 上进行本地验证，Intel Mac 和较旧 macOS 尚未验证。具体验收情况见[当前工程状态](docs/CURRENT.md)。
+
 想在浏览器里装成网页版（PWA）：
 
 ```bash
@@ -76,6 +87,7 @@ npm test           # 文件、图片、同步、更新等关键路径的回归�
 
 ## ⚠️ 已知限制
 
+- **Mac 隐藏路径**：通过选择器打开的文件夹可能在当前会话可用，但隐藏目录（例如 `.tmp`）下的文件可能因当前文件权限范围而无法从访达打开或在重启后恢复。普通路径已验证，隐藏路径的持久访问仍待处理。
 - **非 UTF-8 的 `.md`（GBK/GB18030、UTF-16）以只读方式打开。** 浏览器只能把文本存回 UTF-8，允许编辑就意味着保存时会悄悄换掉你原文的编码。想编辑请先用别的工具转成 UTF-8。
 - **只想用浏览器装成 PWA（不打 Tauri 包）的话**，装的地址是 `localhost:4173`，首次安装和之后每次更新版本仍然需要把 `npm run preview` 跑起来。Windows 安装包不受这条限制——文件层是 Tauri 原生实现，不依赖本地服务。
 - **浏览器/PWA 模式**需要 Chrome 或 Edge，因为它依赖 File System Access API；Windows 安装包走 Tauri 原生文件层，不受这条限制。
@@ -86,7 +98,7 @@ npm test           # 文件、图片、同步、更新等关键路径的回归�
 
 ## 🗺️ 路线图
 
-- macOS / Linux 正式安装包（目前只有 Windows）
+- macOS 公开安装包与 Linux 安装包（Mac 已可本地构建）
 - 公网可试用的在线演示
 
 ## 致谢

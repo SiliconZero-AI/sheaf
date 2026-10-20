@@ -36,7 +36,7 @@ Grab the latest Windows installer from [Releases](https://github.com/SiliconZero
 
 **You only need to do this once.** From 0.1.4 on, Sheaf finds and installs new versions itself. If you are on 0.1.3 or earlier, download once here and it takes over from there.
 
-macOS / Linux builds are on the roadmap below.
+macOS can be built locally from source (see below); there is no published Mac download yet. Linux installers remain on the roadmap.
 
 ## 🛠️ Build from source
 
@@ -59,6 +59,17 @@ npm run tauri build
 
 The installer lands in `src-tauri/target/release/bundle/nsis/`.
 
+For a local macOS app, install Apple's Xcode Command Line Tools and Rust, then run:
+
+```bash
+npm install
+npm run tauri build
+```
+
+The Mac configuration produces `src-tauri/target/release/bundle/macos/Sheaf.app`. Copy it to Applications and drag it to the Dock. To make it the default Markdown app, select a `.md` in Finder, open Get Info, choose Sheaf under “Open with”, and click “Change All”. Repeat for `.markdown` if needed. Saving, search, and new-window shortcuts also accept Command on Mac.
+
+This is a local build, without Developer ID signing or notarization. Mac automatic updates and in-app deletion undo are unavailable; deleted files go to Finder's Trash and can be dragged back to their original folder. Apple Silicon on macOS 27.0.1 has been checked locally; Intel Macs and older macOS versions have not. See [current engineering status](docs/CURRENT.md) for acceptance details.
+
 To install it as a web app (PWA):
 
 ```bash
@@ -76,6 +87,7 @@ npm test           # regression tests for critical file, image, sync, and update
 
 ## ⚠️ Known limitations
 
+- **macOS hidden paths:** a folder selected through the picker may work for that session, but files under hidden directories (such as `.tmp`) can fail to reopen from Finder or after restart because of the current filesystem scope. Ordinary paths have been checked; hidden-path persistence needs further work.
 - **Non-UTF-8 `.md` files (GBK/GB18030, UTF-16) open read-only.** The browser can only write text back as UTF-8; allowing edits would silently corrupt your file's original encoding on save. Convert to UTF-8 in another tool first if you need to edit it.
 - **Installing as a browser PWA (without the Tauri build)** points at `localhost:4173` — both the first install and every later update still need `npm run preview` running. The Windows installer isn't affected by this — its file layer is native Tauri, no local server involved.
 - **Browser/PWA mode** requires Chrome or Edge because it relies on the File System Access API. The Windows installer uses its native Tauri file layer instead.
@@ -86,7 +98,7 @@ npm test           # regression tests for critical file, image, sync, and update
 
 ## 🗺️ Roadmap
 
-- macOS / Linux installers (Windows only for now)
+- Published macOS installers and Linux installers (local Mac builds are available)
 - A public online demo
 
 ## Acknowledgments
